@@ -5,7 +5,9 @@ import {
   BookmarkCheck, 
   Plus, 
   CheckCircle2, 
-  XCircle 
+  XCircle,
+  Search,
+  Package
 } from 'lucide-react';
 
 interface PrendaVariante {
@@ -18,13 +20,16 @@ interface PrendaVariante {
 }
 
 export const ReservasView = () => {
-  const { sucursalActiva, cajaActiva } = useAuth();
+  const { perfil, empresa, sucursalActiva, cajaActiva } = useAuth();
 
   const [reservas, setReservas] = useState<any[]>([]);
   const [variantes, setVariantes] = useState<PrendaVariante[]>([]);
 
   const [mostrarModalNueva, setMostrarModalNueva] = useState(false);
   const [varianteId, setVarianteId] = useState('');
+  const [busquedaPrenda, setBusquedaPrenda] = useState('');
+  const [mostrarDropdownPrendas, setMostrarDropdownPrendas] = useState(false);
+
   const [cantidad, setCantidad] = useState('1');
   const [montoSenia, setMontoSenia] = useState('');
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'transferencia' | 'debito' | 'credito'>('efectivo');
@@ -37,7 +42,7 @@ export const ReservasView = () => {
       cargarReservas();
       cargarVariantes();
     }
-  }, [sucursalActiva]);
+  }, [sucursalActiva, empresa?.id]);
 
   const cargarReservas = async () => {
     if (!sucursalActiva) return;
@@ -72,22 +77,36 @@ export const ReservasView = () => {
         id,
         color,
         talles_catalogo (etiqueta),
-        productos (nombre, precio_venta),
+        productos!inner (nombre, precio_venta, activo, empresa_id),
         stock_sucursal (cantidad, sucursal_id)
       `)
-      .eq('activo', true);
+      .eq('activo', true)
+      .eq('productos.activo', true);
 
     if (data) {
-      const items: PrendaVariante[] = data.map((v: any) => ({
-        id: v.id,
-        productoNombre: v.productos.nombre,
-        color: v.color,
-        talle: v.talles_catalogo?.etiqueta || '',
-        precioVenta: v.productos.precio_venta,
-        stockActual: v.stock_sucursal?.find((s: any) => s.sucursal_id === sucursalActiva.id)?.cantidad || 0
-      }));
+      const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+
+      const items: PrendaVariante[] = data
+        .filter((v: any) => {
+          if (empresaIdEfectivo && v.productos?.empresa_id && v.productos.empresa_id !== empresaIdEfectivo) {
+            return false;
+          }
+          const cant = v.stock_sucursal?.find((s: any) => s.sucursal_id === sucursalActiva.id)?.cantidad || 0;
+          return cant > 0;
+        })
+        .map((v: any) => ({
+          id: v.id,
+          productoNombre: v.productos.nombre,
+          color: v.color,
+          talle: v.talles_catalogo?.etiqueta || '',
+          precioVenta: v.productos.precio_venta,
+          stockActual: v.stock_sucursal?.find((s: any) => s.sucursal_id === sucursalActiva.id)?.cantidad || 0
+        }));
+
       setVariantes(items);
-      if (items.length > 0) setVarianteId(items[0].id);
+      if (items.length > 0 && !varianteId) {
+        setVarianteId(items[0].id);
+      }
     }
   };
 
@@ -95,6 +114,13 @@ export const ReservasView = () => {
   const totalEstimado = (prendaSeleccionada?.precioVenta || 0) * (parseInt(cantidad) || 1);
   const seniaNum = parseFloat(montoSenia) || 0;
   const saldoPendiente = Math.max(0, totalEstimado - seniaNum);
+
+  const variantesFiltradas = variantes.filter((v) => {
+    if (!busquedaPrenda.trim()) return true;
+    const q = busquedaPrenda.toLowerCase().trim();
+    const texto = `${v.productoNombre} ${v.color} talle ${v.talle}`.toLowerCase();
+    return texto.includes(q);
+  });
 
   const handleCrearReserva = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,6 +141,8 @@ export const ReservasView = () => {
     }
 
     try {
+      const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+
       let clienteId: string | null = null;
       if (telefonoCliente.trim()) {
         const { data: cData } = await supabase
@@ -122,7 +150,8 @@ export const ReservasView = () => {
           .upsert(
             {
               telefono_whatsapp: telefonoCliente.trim(),
-              nombre: nombreCliente.trim() || 'Cliente Reserva'
+              nombre: nombreCliente.trim() || 'Cliente Reserva',
+              ...(empresaIdEfectivo ? { empresa_id: empresaIdEfectivo } : {})
             },
             { onConflict: 'telefono_whatsapp' }
           )
@@ -135,14 +164,15 @@ export const ReservasView = () => {
       const fechaLimiteDate = new Date();
       fechaLimiteDate.setDate(fechaLimiteDate.getDate() + parseInt(diasLimite));
 
-      const dummyVendedorId = '00000000-0000-0000-0000-000000000000';
+      const vendedorIdEfectivo = perfil?.id || '00000000-0000-0000-0000-000000000000';
 
       const { data: reservaData, error: rError } = await supabase
         .from('reservas')
         .insert({
+          empresa_id: empresaIdEfectivo,
           sucursal_id: sucursalActiva.id,
           caja_turno_id: cajaActiva.id,
-          vendedor_id: dummyVendedorId,
+          vendedor_id: vendedorIdEfectivo,
           cliente_id: clienteId,
           total_reserva: totalEstimado,
           monto_senia: seniaNum,
@@ -176,6 +206,7 @@ export const ReservasView = () => {
       setMontoSenia('');
       setTelefonoCliente('');
       setNombreCliente('');
+      setBusquedaPrenda('');
       cargarReservas();
       cargarVariantes();
     } catch (err: any) {
@@ -189,12 +220,14 @@ export const ReservasView = () => {
       return;
     }
 
-    const dummyVendedorId = '00000000-0000-0000-0000-000000000000';
+    const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+    const vendedorIdEfectivo = perfil?.id || '00000000-0000-0000-0000-000000000000';
 
     await supabase.from('ventas').insert({
+      empresa_id: empresaIdEfectivo,
       sucursal_id: sucursalActiva?.id,
       caja_turno_id: cajaActiva.id,
-      vendedor_id: dummyVendedorId,
+      vendedor_id: vendedorIdEfectivo,
       cliente_id: reserva.cliente_id,
       subtotal: reserva.saldo_pendiente,
       total_final: reserva.saldo_pendiente,
@@ -254,7 +287,11 @@ export const ReservasView = () => {
         </div>
 
         <button
-          onClick={() => setMostrarModalNueva(true)}
+          onClick={() => {
+            setBusquedaPrenda('');
+            setMostrarDropdownPrendas(false);
+            setMostrarModalNueva(true);
+          }}
           className="flex items-center gap-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg transition-colors cursor-pointer text-sm"
         >
           <Plus className="w-4 h-4" /> Nueva Reserva / Seña
@@ -302,7 +339,7 @@ export const ReservasView = () => {
                   <div className="mt-3 bg-slate-950 p-3 rounded-lg border border-slate-800/80 space-y-1 text-xs">
                     {r.reservas_detalle?.map((d: any, idx: number) => (
                       <p key={idx} className="text-slate-300 font-medium">
-                        {d.cantidad}x {d.variantes?.productos?.nombre} ({d.variantes?.color} - Talle {d.variantes?.talles_catalogo?.etiqueta})
+                        {d.cantidad}x {d.variantes?.productos?.nombre} ({d.variantes?.color} • Talle {d.variantes?.talles_catalogo?.etiqueta})
                       </p>
                     ))}
                     <div className="pt-2 border-t border-slate-800 text-slate-400 space-y-0.5">
@@ -347,23 +384,93 @@ export const ReservasView = () => {
 
       {mostrarModalNueva && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-black text-white uppercase tracking-wider">Nueva Seña de Prenda</h3>
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h3 className="text-lg font-black text-white uppercase tracking-wider flex items-center gap-2">
+              <Package className="w-5 h-5 text-sky-400" /> Nueva Seña de Prenda
+            </h3>
 
             <form onSubmit={handleCrearReserva} className="space-y-3">
-              <div>
-                <label className="block text-xs uppercase font-bold text-slate-400 mb-1">Prenda a Congelar</label>
-                <select
-                  value={varianteId}
-                  onChange={(e) => setVarianteId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
-                >
-                  {variantes.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.productoNombre} - {v.color} (Talle {v.talle}) - ${Number(v.precioVenta).toLocaleString()} [Disp: {v.stockActual}]
-                    </option>
-                  ))}
-                </select>
+              {/* Buscador de Prenda con filtro de stock > 0 */}
+              <div className="relative">
+                <label className="block text-xs uppercase font-bold text-slate-400 mb-1">
+                  Prenda a Congelar (Solo disponibles en local)
+                </label>
+
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Escribí ej: 'Remera dados', 'Buzo negro'..."
+                    value={busquedaPrenda}
+                    onFocus={() => setMostrarDropdownPrendas(true)}
+                    onChange={(e) => {
+                      setBusquedaPrenda(e.target.value);
+                      setMostrarDropdownPrendas(true);
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                {prendaSeleccionada && (
+                  <div className="mt-1.5 p-2 bg-sky-500/10 border border-sky-500/30 rounded-lg flex items-center justify-between text-xs">
+                    <span className="font-semibold text-white">
+                      {prendaSeleccionada.productoNombre} ({prendaSeleccionada.color} • Talle {prendaSeleccionada.talle})
+                    </span>
+                    <span className="font-mono text-emerald-400 font-bold">
+                      ${prendaSeleccionada.precioVenta.toLocaleString()} • [{prendaSeleccionada.stockActual} disp.]
+                    </span>
+                  </div>
+                )}
+
+                {mostrarDropdownPrendas && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setMostrarDropdownPrendas(false)} 
+                    />
+                    <div className="absolute left-0 right-0 mt-1 bg-slate-950 border border-slate-800 rounded-xl shadow-xl z-20 max-h-56 overflow-y-auto divide-y divide-slate-800/60">
+                      {variantesFiltradas.length === 0 ? (
+                        <div className="p-3 text-xs text-slate-500 text-center">
+                          No hay prendas con stock disponible para esa búsqueda.
+                        </div>
+                      ) : (
+                        variantesFiltradas.map((v) => {
+                          const estaSeleccionada = v.id === varianteId;
+                          return (
+                            <div
+                              key={v.id}
+                              onClick={() => {
+                                setVarianteId(v.id);
+                                setBusquedaPrenda(`${v.productoNombre} - ${v.color} (${v.talle})`);
+                                setMostrarDropdownPrendas(false);
+                              }}
+                              className={`p-2.5 text-xs cursor-pointer flex justify-between items-center transition-colors ${
+                                estaSeleccionada
+                                  ? 'bg-sky-500/20 text-white font-bold'
+                                  : 'hover:bg-slate-900 text-slate-300'
+                              }`}
+                            >
+                              <div>
+                                <p className="font-semibold text-white">{v.productoNombre}</p>
+                                <p className="text-[11px] text-slate-400">
+                                  {v.color} • Talle {v.talle}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-emerald-400 font-mono">
+                                  ${v.precioVenta.toLocaleString()}
+                                </p>
+                                <span className="text-[10px] bg-slate-800 text-sky-300 px-1.5 py-0.5 rounded font-mono font-bold">
+                                  {v.stockActual} en local
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -372,6 +479,7 @@ export const ReservasView = () => {
                   <input
                     type="number"
                     min="1"
+                    max={prendaSeleccionada?.stockActual || 1}
                     required
                     value={cantidad}
                     onChange={(e) => setCantidad(e.target.value)}
@@ -409,7 +517,7 @@ export const ReservasView = () => {
                   <select
                     value={metodoPago}
                     onChange={(e) => setMetodoPago(e.target.value as any)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white capitalize"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white capitalize cursor-pointer"
                   >
                     <option value="efectivo">Efectivo</option>
                     <option value="transferencia">Transferencia / MP</option>
@@ -451,7 +559,8 @@ export const ReservasView = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-lg text-xs cursor-pointer"
+                  disabled={!prendaSeleccionada}
+                  className="px-5 py-2 bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-bold rounded-lg text-xs cursor-pointer"
                 >
                   Congelar Stock & Registrar
                 </button>
