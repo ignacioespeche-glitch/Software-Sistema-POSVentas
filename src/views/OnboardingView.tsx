@@ -23,7 +23,8 @@ import {
   Boxes,
   Users,
   Plus,
-  Trash2
+  Trash2,
+  Calendar
 } from 'lucide-react';
 
 const RUBROS = [
@@ -46,7 +47,8 @@ const OBJETIVOS_LISTA = [
   { id: 'stock', label: 'Controlar mi stock con curvas de talles y colores', icon: Boxes, default: true },
   { id: 'caja_ciega', label: 'Delegar tareas a empleados y arqueo ciego de caja', icon: Users, default: true },
   { id: 'senas_cambios', label: 'Controlar señas, reservas y cambios de prendas', icon: Layers, default: true },
-  { id: 'tareas_comunicacion', label: 'Coordinar tareas internas y novedades de equipo (SouthCol)', icon: CheckSquare, default: true },
+  { id: 'tareas_comunicacion', label: 'Coordinar tareas internas y novedades de equipo', icon: CheckSquare, default: true },
+  { id: 'calendario_vencimientos', label: 'Calendario de vencimientos, cheques y pagos fijos', icon: Calendar, default: true },
   { id: 'gastos_proveedores', label: 'Registrar gastos fijos y cuentas por pagar a talleres/proveedores', icon: Building2, default: false }
 ];
 
@@ -63,7 +65,8 @@ export const OnboardingView = () => {
     'stock',
     'caja_ciega',
     'senas_cambios',
-    'tareas_comunicacion'
+    'tareas_comunicacion',
+    'calendario_vencimientos'
   ]);
 
   // Paso 3: Logística dinámica
@@ -138,6 +141,8 @@ export const OnboardingView = () => {
           modulo_senas: objetivos.includes('senas_cambios'),
           modulo_cambios: objetivos.includes('senas_cambios'),
           modulo_tareas: objetivos.includes('tareas_comunicacion'),
+          modulo_comunicacion: objetivos.includes('tareas_comunicacion'),
+          modulo_calendario: objetivos.includes('calendario_vencimientos'),
           modulo_finanzas_gastos: objetivos.includes('gastos_proveedores'),
           activa: true
         })
@@ -328,7 +333,7 @@ export const OnboardingView = () => {
           </div>
         )}
 
-        {/* PASO 3: LOGÍSTICA DINÁMICA CON BOTÓN '+' */}
+        {/* PASO 3: LOGÍSTICA DINÁMICA */}
         {paso === 3 && (
           <div className="space-y-6 animate-in fade-in">
             <div>
