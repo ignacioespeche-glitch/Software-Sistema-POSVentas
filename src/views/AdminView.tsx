@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { Sucursal } from '../types/database';
 import { 
@@ -8,20 +9,20 @@ import {
   TrendingUp, 
   Clock, 
   Layers, 
-  ArrowUpRight,
-  ShieldCheck,
-  CalendarDays,
-  Percent,
-  Receipt,
-  Eye,
-  Edit2,
-  Check,
-  X,
-  ExternalLink,
-  ArrowLeftRight,
-  Search,
-  Calendar,
-  WalletCards
+  ArrowUpRight, 
+  ShieldCheck, 
+  CalendarDays, 
+  Percent, 
+  Receipt, 
+  Eye, 
+  Edit2, 
+  Check, 
+  X, 
+  ExternalLink, 
+  ArrowLeftRight, 
+  Search, 
+  Calendar, 
+  WalletCards 
 } from 'lucide-react';
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -40,6 +41,8 @@ interface MetricaMes {
 }
 
 export const AdminView = () => {
+  const { perfil, empresa } = useAuth();
+
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [filtroSucursal, setFiltroSucursal] = useState<string>('todas');
   
@@ -64,10 +67,16 @@ export const AdminView = () => {
 
   useEffect(() => {
     cargarDatosAdmin();
-  }, [filtroSucursal]);
+  }, [filtroSucursal, empresa?.id]);
 
   const cargarDatosAdmin = async () => {
-    const { data: sucs } = await supabase.from('sucursales').select('*').order('nombre');
+    const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+
+    let querySucs = supabase.from('sucursales').select('*').order('nombre');
+    if (empresaIdEfectivo) {
+      querySucs = querySucs.eq('empresa_id', empresaIdEfectivo);
+    }
+    const { data: sucs } = await querySucs;
     if (sucs) setSucursales(sucs as Sucursal[]);
 
     let queryVentas = supabase
@@ -92,6 +101,10 @@ export const AdminView = () => {
       `)
       .order('created_at', { ascending: false });
 
+    if (empresaIdEfectivo) {
+      queryVentas = queryVentas.eq('empresa_id', empresaIdEfectivo);
+    }
+
     if (filtroSucursal !== 'todas') {
       queryVentas = queryVentas.eq('sucursal_id', filtroSucursal);
     }
@@ -99,10 +112,16 @@ export const AdminView = () => {
     const { data: ventasData } = await queryVentas;
     if (ventasData) setVentas(ventasData);
 
-    const { data: detallesData } = await supabase
+    let queryDetalles = supabase
       .from('ventas_detalle')
-      .select('*, ventas!inner(sucursal_id, created_at, estado), variantes (productos (nombre, precio_costo, precio_venta))')
+      .select('*, ventas!inner(empresa_id, sucursal_id, created_at, estado), variantes (productos (nombre, precio_costo, precio_venta))')
       .eq('ventas.estado', 'completada');
+
+    if (empresaIdEfectivo) {
+      queryDetalles = queryDetalles.eq('ventas.empresa_id', empresaIdEfectivo);
+    }
+
+    const { data: detallesData } = await queryDetalles;
 
     let detallesFiltrados = detallesData || [];
     if (filtroSucursal !== 'todas') {
@@ -110,7 +129,7 @@ export const AdminView = () => {
     }
     setDetallesVenta(detallesFiltrados);
 
-    const { data: prodsStock } = await supabase
+    let queryProds = supabase
       .from('productos')
       .select(`
         id,
@@ -127,16 +146,26 @@ export const AdminView = () => {
       .eq('activo', true)
       .order('nombre');
 
+    if (empresaIdEfectivo) {
+      queryProds = queryProds.eq('empresa_id', empresaIdEfectivo);
+    }
+
+    const { data: prodsStock } = await queryProds;
     if (prodsStock) setProductosConStock(prodsStock);
 
-    const { data: usersData } = await supabase
+    let queryUsers = supabase
       .from('perfiles')
       .select('*, sucursales (nombre)')
       .order('created_at', { ascending: false });
 
+    if (empresaIdEfectivo) {
+      queryUsers = queryUsers.eq('empresa_id', empresaIdEfectivo);
+    }
+
+    const { data: usersData } = await queryUsers;
     if (usersData) setUsuarios(usersData);
 
-    const { data: traspasosData } = await supabase
+    let queryTraspasos = supabase
       .from('traspasos')
       .select(`
         *,
@@ -154,6 +183,12 @@ export const AdminView = () => {
         )
       `)
       .order('created_at', { ascending: false });
+
+    if (empresaIdEfectivo) {
+      queryTraspasos = queryTraspasos.eq('empresa_id', empresaIdEfectivo);
+    }
+
+    const { data: traspasosData } = await queryTraspasos;
 
     if (traspasosData) {
       if (filtroSucursal !== 'todas') {
@@ -177,6 +212,10 @@ export const AdminView = () => {
       `)
       .order('fecha_apertura', { ascending: false })
       .limit(50);
+
+    if (empresaIdEfectivo) {
+      queryTurnos = queryTurnos.eq('empresa_id', empresaIdEfectivo);
+    }
 
     if (filtroSucursal !== 'todas') {
       queryTurnos = queryTurnos.eq('sucursal_id', filtroSucursal);
@@ -692,7 +731,7 @@ export const AdminView = () => {
                       {t.sucursal_destino?.nombre}
                     </td>
                     <td className="px-3 py-3 text-slate-300 font-semibold">
-                      {t.usuario_emisor ? `${t.usuario_emisor.nombre} ${t.usuario_emisor.apellido || ''}` : 'Operador Aspen'}
+                      {t.usuario_emisor ? `${t.usuario_emisor.nombre} ${t.usuario_emisor.apellido || ''}` : 'Operador'}
                     </td>
                     <td className="px-3 py-3">
                       {t.usuario_receptor ? (
@@ -706,7 +745,7 @@ export const AdminView = () => {
                     <td className="px-3 py-3 text-slate-300">
                       {t.traspasos_detalle?.map((d: any, idx: number) => (
                         <span key={idx}>
-                          {d.variantes?.productos?.nombre} ({d.variantes?.color} - Talle {d.variantes?.talles_catalogo?.etiqueta})
+                          {d.variantes?.productos?.nombre} ({d.variantes?.color} • Talle {d.variantes?.talles_catalogo?.etiqueta})
                         </span>
                       ))}
                     </td>
@@ -1119,7 +1158,7 @@ export const AdminView = () => {
                     <div>
                       <p className="font-bold text-white">{d.variantes?.productos?.nombre}</p>
                       <p className="text-[11px] text-slate-400">
-                        {d.variantes?.color} - Talle {d.variantes?.talles_catalogo?.etiqueta} (×{d.cantidad})
+                        {d.variantes?.color} • Talle {d.variantes?.talles_catalogo?.etiqueta} (×{d.cantidad})
                       </p>
                     </div>
                     <span className="font-mono font-bold text-slate-200">
