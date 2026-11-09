@@ -12,6 +12,7 @@ import { LoginView } from './views/LoginView';
 import { TicketPublicoView } from './views/TicketPublicoView';
 import { OnboardingView } from './views/OnboardingView';
 import { TareasView } from './views/TareasView';
+import { CalendarioView } from './views/CalendarioView';
 
 const RutaProtegida = ({ children, soloAdmin = false }: { children: React.ReactNode; soloAdmin?: boolean }) => {
   const { perfil, loading } = useAuth();
@@ -116,6 +117,14 @@ const ContenedorPrincipal = () => {
           element={
             <RutaProtegida>
               <TareasView />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/calendario"
+          element={
+            <RutaProtegida soloAdmin={true}>
+              <CalendarioView />
             </RutaProtegida>
           }
         />
