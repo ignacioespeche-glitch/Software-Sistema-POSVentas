@@ -123,7 +123,7 @@ const ContenedorPrincipal = () => {
         <Route
           path="/calendario"
           element={
-            <RutaProtegida soloAdmin={true}>
+            <RutaProtegida>
               <CalendarioView />
             </RutaProtegida>
           }

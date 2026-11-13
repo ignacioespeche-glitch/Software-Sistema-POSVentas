@@ -197,7 +197,7 @@ export const Navbar = () => {
               </NavLink>
             )}
 
-            {esAdmin && (
+            {(empresa as any)?.modulo_calendario !== false && (
               <NavLink
                 to="/calendario"
                 className={({ isActive }) =>
@@ -425,7 +425,7 @@ export const Navbar = () => {
                   </NavLink>
                 )}
 
-                {esAdmin && (
+                {(empresa as any)?.modulo_calendario !== false && (
                   <NavLink
                     to="/calendario"
                     onClick={cerrarMenu}
