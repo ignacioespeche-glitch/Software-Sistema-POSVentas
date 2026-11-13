@@ -469,7 +469,7 @@ export const OnboardingView = () => {
                 <input
                   type="text"
                   required
-                  placeholder="Ej. SouthCol"
+                  placeholder="Ej. Mi Tienda"
                   value={nombreMarca}
                   onChange={(e) => setNombreMarca(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
@@ -498,7 +498,7 @@ export const OnboardingView = () => {
                   <input
                     type="email"
                     required
-                    placeholder="juan@southcol.com"
+                    placeholder="contacto@mitienda.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
