@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { supabase } from './lib/supabase';
 import { Navbar } from './components/Navbar';
 import { SuscripcionGuard } from './components/SuscripcionGuard';
-import { BurbujaSuperAdmin, CORREOS_FUNDADORES } from './components/BurbujaSuperAdmin';
+import { BurbujaSuperAdmin } from './components/BurbujaSuperAdmin';
 import { CajaTurnosView } from './views/CajaTurnosView';
 import { CatalogoStockView } from './views/CatalogoStockView';
 import { PosView } from './views/PosView';
@@ -42,16 +40,9 @@ const RutaProtegida = ({ children, soloAdmin = false }: { children: React.ReactN
 };
 
 const RutaSuperAdmin = ({ children }: { children: React.ReactNode }) => {
-  const [autorizado, setAutorizado] = useState<boolean | null>(null);
+  const { perfil, loading } = useAuth();
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      const email = data?.user?.email?.toLowerCase() || '';
-      setAutorizado(CORREOS_FUNDADORES.includes(email));
-    });
-  }, []);
-
-  if (autorizado === null) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
         Validando acceso de fundador...
@@ -59,7 +50,7 @@ const RutaSuperAdmin = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  if (!autorizado) {
+  if (!Boolean((perfil as any)?.es_superadmin)) {
     return <Navigate to="/" replace />;
   }
 
@@ -182,7 +173,6 @@ const ContenedorPrincipal = () => {
         </Routes>
       </SuscripcionGuard>
 
-      {/* Burbuja flotante exclusiva para los 3 fundadores en la esquina inferior izquierda */}
       <BurbujaSuperAdmin />
     </div>
   );

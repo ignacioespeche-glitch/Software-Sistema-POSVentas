@@ -1,37 +1,15 @@
-import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, ArrowLeft } from 'lucide-react';
 
-export const CORREOS_FUNDADORES = [
-  'igna03espeche@gmail.com',
-  'ignacioespeche4@gmail.com',
-  'giulimicarelli1@gmail.com',
-  'gimenezjuan2468@gmail.com'
-];
-
 export const BurbujaSuperAdmin = () => {
-  const [esFundador, setEsFundador] = useState(false);
+  const { perfil } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      const email = data?.user?.email?.toLowerCase() || '';
-      setEsFundador(CORREOS_FUNDADORES.includes(email));
-    });
+  const esSuperAdmin = Boolean((perfil as any)?.es_superadmin);
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      const email = session?.user?.email?.toLowerCase() || '';
-      setEsFundador(CORREOS_FUNDADORES.includes(email));
-    });
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
-  if (!esFundador) {
+  if (!esSuperAdmin) {
     return null;
   }
 
