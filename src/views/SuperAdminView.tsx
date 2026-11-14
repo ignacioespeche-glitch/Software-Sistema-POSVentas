@@ -21,6 +21,15 @@ import {
   Store
 } from 'lucide-react';
 
+// Lista centralizada de módulos: agregando uno acá aparece automáticamente en todos los clientes
+const MODULOS_DISPONIBLES = [
+  { key: 'modulo_senas', label: 'Señas' },
+  { key: 'modulo_cambios', label: 'Cambios' },
+  { key: 'modulo_traspasos', label: 'Traspasos' },
+  { key: 'modulo_tareas', label: 'Tareas' },
+  { key: 'modulo_calendario', label: 'Calendario' }
+] as const;
+
 interface EmpresaMetricas {
   empresa_id: string;
   nombre: string;
@@ -97,7 +106,6 @@ export const SuperAdminView = () => {
 
     setEmpresas((data as EmpresaMetricas[]) || []);
 
-    // Cargar último anuncio
     const { data: adData } = await supabase
       .from('saas_anuncios')
       .select('*')
@@ -111,7 +119,6 @@ export const SuperAdminView = () => {
       setAnuncioActivo(adData.activo);
     }
 
-    // Cargar mejoras
     const { data: mejData } = await supabase
       .from('saas_mejoras')
       .select('*')
@@ -187,27 +194,61 @@ export const SuperAdminView = () => {
     baseFecha.setDate(baseFecha.getDate() + 30);
     const nuevaFecha = baseFecha.toISOString().split('T')[0];
 
-    await supabase
-      .from('empresas')
-      .update({
-        fecha_vencimiento: nuevaFecha,
-        estado_suscripcion: 'activo',
-        activa: true
-      })
-      .eq('id', emp.empresa_id);
+    const { error } = await supabase.rpc('actualizar_empresa_superadmin', {
+      p_empresa_id: emp.empresa_id,
+      p_es_marca_interna: emp.es_marca_interna,
+      p_nombre_plan: emp.nombre_plan,
+      p_precio_mensual: Number(emp.precio_mensual),
+      p_usuarios_extra: Number(emp.usuarios_extra),
+      p_precio_usuario_extra: Number(emp.precio_usuario_extra),
+      p_fecha_vencimiento: nuevaFecha,
+      p_estado_suscripcion: 'activo',
+      p_link_mercadopago: emp.link_mercadopago,
+      p_telefono_contacto: emp.telefono_contacto,
+      p_direccion_local: emp.direccion_local,
+      p_notas_customer_success: emp.notas_customer_success,
+      p_modulo_senas: emp.modulo_senas,
+      p_modulo_cambios: emp.modulo_cambios,
+      p_modulo_traspasos: emp.modulo_traspasos,
+      p_modulo_tareas: emp.modulo_tareas,
+      p_modulo_calendario: emp.modulo_calendario
+    });
+
+    if (error) {
+      alert('Error al renovar: ' + error.message);
+      return;
+    }
 
     cargarTodo();
   };
 
   const handleTogglePausa = async (emp: EmpresaMetricas) => {
     const nuevoEstado = emp.estado_suscripcion === 'pausado' ? 'activo' : 'pausado';
-    await supabase
-      .from('empresas')
-      .update({
-        estado_suscripcion: nuevoEstado,
-        activa: nuevoEstado !== 'pausado'
-      })
-      .eq('id', emp.empresa_id);
+
+    const { error } = await supabase.rpc('actualizar_empresa_superadmin', {
+      p_empresa_id: emp.empresa_id,
+      p_es_marca_interna: emp.es_marca_interna,
+      p_nombre_plan: emp.nombre_plan,
+      p_precio_mensual: Number(emp.precio_mensual),
+      p_usuarios_extra: Number(emp.usuarios_extra),
+      p_precio_usuario_extra: Number(emp.precio_usuario_extra),
+      p_fecha_vencimiento: emp.fecha_vencimiento,
+      p_estado_suscripcion: nuevoEstado,
+      p_link_mercadopago: emp.link_mercadopago,
+      p_telefono_contacto: emp.telefono_contacto,
+      p_direccion_local: emp.direccion_local,
+      p_notas_customer_success: emp.notas_customer_success,
+      p_modulo_senas: emp.modulo_senas,
+      p_modulo_cambios: emp.modulo_cambios,
+      p_modulo_traspasos: emp.modulo_traspasos,
+      p_modulo_tareas: emp.modulo_tareas,
+      p_modulo_calendario: emp.modulo_calendario
+    });
+
+    if (error) {
+      alert('Error al cambiar estado: ' + error.message);
+      return;
+    }
 
     cargarTodo();
   };
@@ -217,29 +258,33 @@ export const SuperAdminView = () => {
     if (!editando) return;
     setGuardandoEdicion(true);
 
-    await supabase
-      .from('empresas')
-      .update({
-        es_marca_interna: editando.es_marca_interna,
-        nombre_plan: editando.nombre_plan,
-        precio_mensual: Number(editando.precio_mensual),
-        usuarios_extra: Number(editando.usuarios_extra),
-        precio_usuario_extra: Number(editando.precio_usuario_extra),
-        fecha_vencimiento: editando.fecha_vencimiento,
-        estado_suscripcion: editando.estado_suscripcion,
-        link_mercadopago: editando.link_mercadopago,
-        telefono_contacto: editando.telefono_contacto,
-        direccion_local: editando.direccion_local,
-        notas_customer_success: editando.notas_customer_success,
-        modulo_senas: editando.modulo_senas,
-        modulo_cambios: editando.modulo_cambios,
-        modulo_traspasos: editando.modulo_traspasos,
-        modulo_tareas: editando.modulo_tareas,
-        modulo_calendario: editando.modulo_calendario
-      })
-      .eq('id', editando.empresa_id);
+    const { error } = await supabase.rpc('actualizar_empresa_superadmin', {
+      p_empresa_id: editando.empresa_id,
+      p_es_marca_interna: editando.es_marca_interna,
+      p_nombre_plan: editando.nombre_plan,
+      p_precio_mensual: Number(editando.precio_mensual),
+      p_usuarios_extra: Number(editando.usuarios_extra),
+      p_precio_usuario_extra: Number(editando.precio_usuario_extra),
+      p_fecha_vencimiento: editando.fecha_vencimiento || null,
+      p_estado_suscripcion: editando.estado_suscripcion,
+      p_link_mercadopago: editando.link_mercadopago,
+      p_telefono_contacto: editando.telefono_contacto,
+      p_direccion_local: editando.direccion_local,
+      p_notas_customer_success: editando.notas_customer_success,
+      p_modulo_senas: editando.modulo_senas,
+      p_modulo_cambios: editando.modulo_cambios,
+      p_modulo_traspasos: editando.modulo_traspasos,
+      p_modulo_tareas: editando.modulo_tareas,
+      p_modulo_calendario: editando.modulo_calendario
+    });
 
     setGuardandoEdicion(false);
+
+    if (error) {
+      alert('Error al guardar: ' + error.message);
+      return;
+    }
+
     setEditando(null);
     cargarTodo();
   };
@@ -860,17 +905,11 @@ export const SuperAdminView = () => {
               </div>
             </div>
 
-            {/* Módulos habilitados */}
+            {/* Módulos habilitados dinámicos */}
             <div className="border-t border-slate-800 pt-3">
               <span className="block text-xs font-bold text-slate-400 mb-2">Módulos Activos en este Local</span>
               <div className="flex flex-wrap gap-3 text-xs">
-                {[
-                  { key: 'modulo_senas', label: 'Señas' },
-                  { key: 'modulo_cambios', label: 'Cambios' },
-                  { key: 'modulo_traspasos', label: 'Traspasos' },
-                  { key: 'modulo_tareas', label: 'Tareas' },
-                  { key: 'modulo_calendario', label: 'Calendario' }
-                ].map((mod) => (
+                {MODULOS_DISPONIBLES.map((mod) => (
                   <label
                     key={mod.key}
                     className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl cursor-pointer"
