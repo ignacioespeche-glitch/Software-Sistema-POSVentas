@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { SuscripcionGuard } from './components/SuscripcionGuard';
 import { BurbujaSuperAdmin } from './components/BurbujaSuperAdmin';
+import { AnuncioGlobalBanner } from './components/AnuncioGlobalBanner';
 import { CajaTurnosView } from './views/CajaTurnosView';
 import { CatalogoStockView } from './views/CatalogoStockView';
 import { PosView } from './views/PosView';
@@ -79,7 +80,12 @@ const ContenedorPrincipal = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-sky-500 selection:text-white">
       <SuscripcionGuard>
-        {!esRutaPublica && perfil && perfil.activo && <Navbar />}
+        {!esRutaPublica && perfil && perfil.activo && (
+          <>
+            <AnuncioGlobalBanner />
+            <Navbar />
+          </>
+        )}
 
         <Routes>
           <Route path="/login" element={<LoginView />} />
