@@ -1,203 +1,169 @@
 import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { AlertTriangle, ArrowRight, CreditCard, Lightbulb, RefreshCw, Wallet, MessageCircle, X, Megaphone } from 'lucide-react';
+import { AlertTriangle, CreditCard, Lock, MessageCircle, ExternalLink, Loader2 } from 'lucide-react';
+
+interface EmpresaSuscripcion {
+  id: string;
+  nombre: string;
+  es_marca_interna: boolean;
+  activa: boolean;
+  estado_suscripcion: string;
+  nombre_plan: string;
+  precio_mensual: number;
+  usuarios_extra: number;
+  precio_usuario_extra: number;
+  fecha_vencimiento: string | null;
+  link_mercadopago: string | null;
+}
 
 export const SuscripcionGuard = ({ children }: { children: React.ReactNode }) => {
-  const { empresa, perfil, cerrarSesion } = useAuth();
-  const location = useLocation();
-  const [modalPagoAbierto, setModalPagoAbierto] = useState(false);
-  const [avisoMpSinLink, setAvisoMpSinLink] = useState(false);
-  const [anuncioGlobal, setAnuncioGlobal] = useState<string | null>(null);
+  const { perfil } = useAuth();
+  const [empresa, setEmpresa] = useState<EmpresaSuscripcion | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [mostrarModalPago, setMostrarModalPago] = useState(false);
+  const [generandoLink, setGenerandoLink] = useState(false);
+
+  const cargarEmpresa = async () => {
+    if (!perfil?.empresa_id) {
+      setLoading(false);
+      return;
+    }
+
+    const { data } = await supabase
+      .from('empresas')
+      .select(
+        'id, nombre, es_marca_interna, activa, estado_suscripcion, nombre_plan, precio_mensual, usuarios_extra, precio_usuario_extra, fecha_vencimiento, link_mercadopago'
+      )
+      .eq('id', perfil.empresa_id)
+      .single();
+
+    if (data) {
+      setEmpresa(data as EmpresaSuscripcion);
+    }
+    setLoading(false);
+  };
 
   useEffect(() => {
-    supabase
-      .from('saas_anuncios')
-      .select('mensaje')
-      .eq('activo', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data?.mensaje) setAnuncioGlobal(data.mensaje);
-      });
-  }, []);
+    cargarEmpresa();
+  }, [perfil?.empresa_id]);
 
-  // Nunca bloquear rutas públicas ni el panel de superadmin
-  const esRutaExenta =
-    location.pathname === '/login' ||
-    location.pathname === '/onboarding' ||
-    location.pathname === '/registro' ||
-    location.pathname === '/superadmin' ||
-    location.pathname.startsWith('/ticket/');
+  const handleIniciarPagoMP = async () => {
+    if (!empresa) return;
 
-  if (esRutaExenta || !empresa || !perfil) {
+    // Si tiene un link manual cargado en SuperAdmin, lo usa primero
+    if (empresa.link_mercadopago) {
+      window.open(empresa.link_mercadopago, '_blank');
+      return;
+    }
+
+    // Genera el link de pago automático por el monto exacto en Mercado Pago
+    setGenerandoLink(true);
+    const { data, error } = await supabase.functions.invoke('crear-pago-mp', {
+      body: { empresa_id: empresa.id }
+    });
+    setGenerandoLink(false);
+
+    if (error || !data?.init_point) {
+      alert('No se pudo iniciar el pago con Mercado Pago. Intentá nuevamente o escribinos por WhatsApp.');
+      return;
+    }
+
+    window.location.href = data.init_point;
+  };
+
+  if (loading || !empresa || empresa.es_marca_interna) {
     return <>{children}</>;
   }
 
-  const emp: any = empresa;
-
-  // Marcas propias (Aspen, SouthCol) nunca se bloquean
-  if (emp.es_marca_interna) {
-    return (
-      <>
-        {anuncioGlobal && (
-          <div className="bg-sky-950/90 border-b border-sky-500/30 px-4 py-1.5 text-xs text-sky-200 flex items-center justify-center gap-2">
-            <Megaphone className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span>{anuncioGlobal}</span>
-          </div>
-        )}
-        {children}
-      </>
-    );
-  }
-
-  // Cálculo de días restantes
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
+  const venc = empresa.fecha_vencimiento ? new Date(empresa.fecha_vencimiento + 'T00:00:00') : null;
+  const diasRestantes = venc ? Math.ceil((venc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 30;
 
-  let diasRestantes = 30;
-  if (emp.fecha_vencimiento) {
-    const venc = new Date(emp.fecha_vencimiento + 'T00:00:00');
-    const diffMs = venc.getTime() - hoy.getTime();
-    diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-  }
+  const estaBloqueado =
+    empresa.estado_suscripcion === 'pausado' || !empresa.activa || diasRestantes < 0;
 
-  const estaPausada =
-    emp.estado_suscripcion === 'pausado' ||
-    emp.activa === false ||
-    diasRestantes < 0;
+  const porVencer = !estaBloqueado && diasRestantes >= 0 && diasRestantes <= 5;
 
-  const enAlertaPreventiva = !estaPausada && diasRestantes <= 5;
+  const totalPagar =
+    Number(empresa.precio_mensual || 0) +
+    Number(empresa.usuarios_extra || 0) * Number(empresa.precio_usuario_extra || 0);
 
-  const precioBase = Number(emp.precio_mensual ?? 35000);
-  const cantExtra = Number(emp.usuarios_extra ?? 0);
-  const precioExtraUnit = Number(emp.precio_usuario_extra ?? 5000);
-  const subtotalExtras = cantExtra * precioExtraUnit;
-  const totalPagar = precioBase + subtotalExtras;
-  const nombrePlan = emp.nombre_plan || 'PLAN BÁSICO';
-
-  const handleClickMercadoPago = () => {
-    if (emp.link_mercadopago && emp.link_mercadopago.trim().length > 5) {
-      window.open(emp.link_mercadopago, '_blank');
-    } else {
-      setAvisoMpSinLink(true);
-    }
-  };
-
-  // PANTALLA DE BLOQUEO TOTAL (CUENTA EN PAUSA / VENCIDA)
-  if (estaPausada) {
+  // PANTALLA DE BLOQUEO TOTAL (Cuenta en pausa o vencida)
+  if (estaBloqueado) {
     return (
-      <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col items-center justify-center p-4 sm:p-6 font-sans">
-        <div className="max-w-xl w-full space-y-6 text-center">
-          <div className="space-y-1.5">
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
-              👋 ¡Nos alegra verte de nuevo por acá!
-            </h1>
-            <p className="text-sm sm:text-base text-slate-600 font-medium">
-              Volvé a disfrutar de tu sistema de gestión 🚀
-            </p>
+      <div className="min-h-screen bg-slate-100 text-slate-900 flex items-center justify-center p-4">
+        <div className="bg-white border border-slate-200 shadow-2xl rounded-3xl max-w-lg w-full p-6 md:p-8 space-y-6">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+              <Lock className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-[11px] font-black uppercase tracking-wider text-rose-600">
+                Suscripción G.E.M.I. Vencida
+              </span>
+              <h1 className="text-xl font-black text-slate-900">Tu cuenta está en pausa</h1>
+            </div>
           </div>
 
-          <div className="bg-rose-50/90 border-2 border-rose-500/80 rounded-xl p-5 space-y-1.5 shadow-sm">
-            <h2 className="text-lg sm:text-xl font-black text-rose-600">
-              Tu cuenta está en pausa en este momento.
-            </h2>
-            <p className="text-xs sm:text-sm text-rose-600/90 leading-relaxed max-w-md mx-auto">
-              Para seguir utilizando el sistema y acceder a la información de{' '}
-              <span className="font-bold">{emp.nombre}</span>, solo necesitás reactivarla con un pago rápido y seguro.
-            </p>
-          </div>
-
-          <p className="text-xs sm:text-sm text-slate-700 max-w-lg mx-auto leading-relaxed">
-            <Lightbulb className="w-4 h-4 text-amber-500 inline mr-1 -mt-0.5" />
-            <span className="font-bold">Recordá que el servicio se paga por período adelantado</span>, por eso, para seguir gestionando tu negocio sin interrupciones, deberás abonar el período de facturación en curso.
+          <p className="text-sm text-slate-600 leading-relaxed">
+            El período activo de <strong>{empresa.nombre}</strong> finalizó. Tus datos, ventas e inventario están intactos; aboná tu renovación para reactivar el sistema al instante.
           </p>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-md text-left space-y-4">
-            <div className="flex items-center gap-2 text-blue-600 font-bold text-base">
-              <RefreshCw className="w-4 h-4" />
-              <span>Detalle de la reactivación</span>
-              <span className="text-slate-400 font-normal text-xs">(Mensual)</span>
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Plan contratado:</span>
+              <span className="font-black text-slate-900">{empresa.nombre_plan}</span>
             </div>
-
-            <div className="divide-y divide-slate-100 text-sm">
-              <div className="py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-600" />
-                  <span className="font-semibold text-slate-700 uppercase">{nombrePlan}</span>
-                </div>
-                <span className="font-bold text-slate-900">
-                  ${precioBase.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+            <div className="flex justify-between">
+              <span className="text-slate-500">Abono base mensual:</span>
+              <span className="font-bold text-slate-800">${Number(empresa.precio_mensual).toLocaleString('es-AR')}</span>
+            </div>
+            {empresa.usuarios_extra > 0 && (
+              <div className="flex justify-between">
+                <span className="text-slate-500">
+                  Sucursales / Usuarios extra ({empresa.usuarios_extra}):
+                </span>
+                <span className="font-bold text-slate-800">
+                  ${(empresa.usuarios_extra * empresa.precio_usuario_extra).toLocaleString('es-AR')}
                 </span>
               </div>
-
-              {cantExtra > 0 && (
-                <div className="py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-600" />
-                    <span className="font-semibold text-slate-700">USUARIO / SUCURSAL EXTRA</span>
-                    <span className="text-xs text-slate-400 font-bold">x{cantExtra}</span>
-                  </div>
-                  <span className="font-bold text-slate-900">
-                    ${subtotalExtras.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              )}
-
-              <div className="pt-4 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-slate-800 font-bold">
-                  <Wallet className="w-4 h-4 text-blue-600" />
-                  <span>Total general a pagar:</span>
-                </div>
-                <span className="text-xl sm:text-2xl font-black text-rose-600">
-                  ${totalPagar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
+            )}
+            <div className="border-t border-slate-200 pt-2 flex justify-between text-sm">
+              <span className="font-black text-slate-900">Total a abonar (30 días):</span>
+              <span className="font-black text-sky-600">${totalPagar.toLocaleString('es-AR')}</span>
             </div>
           </div>
 
-          <div className="space-y-3 pt-1">
+          <div className="space-y-2.5">
             <button
               type="button"
-              onClick={handleClickMercadoPago}
-              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-3.5 rounded-xl text-sm shadow-lg shadow-blue-600/25 transition-all cursor-pointer inline-flex items-center justify-center gap-2"
+              disabled={generandoLink}
+              onClick={handleIniciarPagoMP}
+              className="w-full bg-[#009EE3] hover:bg-[#0089C7] text-white font-black py-3.5 px-4 rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 cursor-pointer transition-colors disabled:opacity-60"
             >
-              <CreditCard className="w-4 h-4" />
-              Reactivar ahora pagando a través de Mercado Pago
+              {generandoLink ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Conectando con Mercado Pago...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4" /> Reactivar ahora pagando a través de Mercado Pago
+                </>
+              )}
             </button>
 
-            {avisoMpSinLink && (
-              <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-3.5 text-xs max-w-md mx-auto space-y-2">
-                <p className="font-bold">
-                  El botón automático de Mercado Pago se está terminando de vincular para tu cuenta.
-                </p>
-                <p>
-                  Podés abonar por transferencia y enviarnos el comprobante por WhatsApp para reactivarte en el acto:
-                </p>
-                <a
-                  href={`https://wa.me/5492610000000?text=${encodeURIComponent(
-                    `Hola! Quiero reactivar la cuenta de ${emp.nombre} (${nombrePlan} - $${totalPagar.toLocaleString('es-AR')}).`
-                  )}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 bg-emerald-600 text-white font-bold px-4 py-2 rounded-lg hover:bg-emerald-700"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" /> Enviar comprobante por WhatsApp
-                </a>
-              </div>
-            )}
-
-            <div>
-              <button
-                type="button"
-                onClick={cerrarSesion}
-                className="text-xs text-slate-400 hover:text-slate-600 underline cursor-pointer"
-              >
-                Cerrar sesión o cambiar de usuario
-              </button>
-            </div>
+            <a
+              href={`https://wa.me/5492610000000?text=${encodeURIComponent(
+                `Hola equipo de G.E.M.I.! Necesito ayuda con la renovación de ${empresa.nombre}.`
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 transition-colors"
+            >
+              <MessageCircle className="w-4 h-4 text-emerald-600" /> Contactar a soporte por WhatsApp
+            </a>
           </div>
         </div>
       </div>
@@ -206,109 +172,85 @@ export const SuscripcionGuard = ({ children }: { children: React.ReactNode }) =>
 
   return (
     <>
-      {/* BANNER SUPERIOR DE AVISO URGENTE (1 A 5 DÍAS ANTES DE VENCER) */}
-      {enAlertaPreventiva && (
-        <div className="bg-red-600 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs font-bold shadow-md z-50 relative">
-          <div className="flex items-center gap-2.5 mx-auto sm:mx-0">
-            <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-3.5 h-3.5 stroke-[2.5]" />
-            </span>
-            <span>
-              URGENTE: Tu cuenta tiene un pago pendiente
-              {diasRestantes === 0
-                ? ' (vence hoy).'
-                : diasRestantes === 1
-                ? ' (vence mañana).'
-                : ` (vence en ${diasRestantes} días).`}{' '}
-              Regularizalo para seguir usando el sistema sin cortes.
-            </span>
-          </div>
-
+      {/* BANNER PREVENTIVO URGENTE (1 a 5 días antes de vencer) */}
+      {porVencer && (
+        <div className="bg-rose-600 text-white px-4 py-2 text-xs font-bold flex flex-wrap items-center justify-center gap-3">
+          <span className="inline-flex items-center gap-1.5">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            {diasRestantes === 0
+              ? 'Tu suscripción de G.E.M.I. vence HOY.'
+              : `Tu suscripción de G.E.M.I. vence en ${diasRestantes} ${diasRestantes === 1 ? 'día' : 'días'}.`}
+          </span>
           <button
             type="button"
-            onClick={() => {
-              setAvisoMpSinLink(false);
-              setModalPagoAbierto(true);
-            }}
-            className="bg-white hover:bg-slate-100 text-red-600 font-black px-3.5 py-1.5 rounded-md text-[11px] uppercase tracking-wider inline-flex items-center gap-1.5 shadow-sm cursor-pointer mx-auto sm:mx-0 transition-colors"
+            onClick={() => setMostrarModalPago(true)}
+            className="bg-white text-rose-700 hover:bg-rose-50 font-black px-3 py-1 rounded-lg text-[11px] uppercase tracking-wider cursor-pointer transition-colors"
           >
-            PAGAR AHORA <ArrowRight className="w-3.5 h-3.5" />
+            PAGAR AHORA →
           </button>
-        </div>
-      )}
-
-      {/* BANNER DE ANUNCIO GLOBAL DEL SAAS */}
-      {anuncioGlobal && !enAlertaPreventiva && (
-        <div className="bg-sky-950/90 border-b border-sky-500/30 px-4 py-1.5 text-xs text-sky-200 flex items-center justify-center gap-2">
-          <Megaphone className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-          <span>{anuncioGlobal}</span>
         </div>
       )}
 
       {children}
 
-      {/* MODAL DE PAGO PREVENTIVO (CUANDO TOCAN "PAGAR AHORA" EN EL BANNER ROJO) */}
-      {modalPagoAbierto && (
+      {/* MODAL DE PAGO PREVENTIVO */}
+      {mostrarModalPago && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white text-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 relative">
-            <button
-              type="button"
-              onClick={() => setModalPagoAbierto(false)}
-              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-600 px-2.5 py-1 rounded-full">
-                Renovación Mensual
-              </span>
-              <h3 className="text-xl font-black text-slate-900 mt-2">
-                Detalle de tu suscripción
-              </h3>
-              <p className="text-xs text-slate-500">
-                Abonando ahora evitás la pausa automática de {emp.nombre}.
-              </p>
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-5 text-white">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-black text-base">Renovar Suscripción G.E.M.I.</h3>
+              <button
+                type="button"
+                onClick={() => setMostrarModalPago(false)}
+                className="text-slate-400 hover:text-white text-xs font-bold cursor-pointer"
+              >
+                Cerrar
+              </button>
             </div>
 
-            <div className="border border-slate-200 rounded-xl p-4 divide-y divide-slate-100 text-sm">
-              <div className="pb-2.5 flex justify-between">
-                <span className="font-semibold text-slate-700">{nombrePlan}</span>
-                <span className="font-bold">${precioBase.toLocaleString('es-AR')}</span>
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Local:</span>
+                <span className="font-bold">{empresa.nombre}</span>
               </div>
-              {cantExtra > 0 && (
-                <div className="py-2.5 flex justify-between">
-                  <span className="font-semibold text-slate-700">Extras (x{cantExtra})</span>
-                  <span className="font-bold">${subtotalExtras.toLocaleString('es-AR')}</span>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Plan:</span>
+                <span className="font-bold text-sky-400">{empresa.nombre_plan}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Base mensual:</span>
+                <span>${Number(empresa.precio_mensual).toLocaleString('es-AR')}</span>
+              </div>
+              {empresa.usuarios_extra > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Extras ({empresa.usuarios_extra}):</span>
+                  <span>
+                    ${(empresa.usuarios_extra * empresa.precio_usuario_extra).toLocaleString('es-AR')}
+                  </span>
                 </div>
               )}
-              <div className="pt-2.5 flex justify-between items-center">
-                <span className="font-bold text-slate-800">Total a abonar:</span>
-                <span className="text-xl font-black text-red-600">
-                  ${totalPagar.toLocaleString('es-AR')}
-                </span>
+              <div className="border-t border-slate-800 pt-2 flex justify-between text-sm font-black">
+                <span>Total (30 días):</span>
+                <span className="text-emerald-400">${totalPagar.toLocaleString('es-AR')}</span>
               </div>
             </div>
 
             <button
               type="button"
-              onClick={handleClickMercadoPago}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
+              disabled={generandoLink}
+              onClick={handleIniciarPagoMP}
+              className="w-full bg-[#009EE3] hover:bg-[#0089C7] text-white font-black py-3.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60"
             >
-              <CreditCard className="w-4 h-4" />
-              Pagar ahora a través de Mercado Pago
+              {generandoLink ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Generando orden en Mercado Pago...
+                </>
+              ) : (
+                <>
+                  <ExternalLink className="w-4 h-4" /> Pagar ahora a través de Mercado Pago
+                </>
+              )}
             </button>
-
-            {avisoMpSinLink && (
-              <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-3 text-xs space-y-2 text-center">
-                <p className="font-bold">
-                  Pasarela automática de Mercado Pago en configuración.
-                </p>
-                <p>
-                  Escribinos por WhatsApp para enviarte el alias o link directo y acreditar tus +30 días al instante.
-                </p>
-              </div>
-            )}
           </div>
         </div>
       )}
