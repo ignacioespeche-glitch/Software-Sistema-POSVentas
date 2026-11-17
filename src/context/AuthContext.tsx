@@ -22,6 +22,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [cajaActiva, setCajaActiva] = useState<CajaTurno | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const limpiarCacheLocal = () => {
+    try {
+      const clavesABorrar: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('pos_cache_')) {
+          clavesABorrar.push(key);
+        }
+      }
+      clavesABorrar.forEach((k) => localStorage.removeItem(k));
+    } catch {
+      // Ignorar errores de almacenamiento en navegadores restringidos
+    }
+  };
+
   const cargarPerfilYEntorno = async (userId: string) => {
     const { data: perf } = await supabase
       .from('perfiles')
@@ -118,12 +133,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [sucursalActiva]);
 
   const cerrarSesion = async () => {
+    limpiarCacheLocal();
     await supabase.auth.signOut();
     setPerfil(null);
     setEmpresa(null);
     setSucursalActiva(null);
     setCajaActiva(null);
-    window.location.href = '/login';
+    window.location.href = '/';
   };
 
   return (
