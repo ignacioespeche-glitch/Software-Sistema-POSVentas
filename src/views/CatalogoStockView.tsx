@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { Categoria } from '../types/database';
+import { ImportadorCatalogoModal } from '../components/ImportadorCatalogoModal';
 import { 
   Boxes, 
   Plus, 
@@ -12,7 +13,8 @@ import {
   Loader2,
   Edit2,
   Trash2,
-  X
+  X,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface TalleCatalogo {
@@ -33,6 +35,8 @@ export const CatalogoStockView = () => {
   const [modoEdicion, setModoEdicion] = useState<'sumar' | 'sobrescribir'>('sumar');
   const [nuevoColor, setNuevoColor] = useState('');
   const [busqueda, setBusqueda] = useState('');
+
+  const [mostrarModalImportar, setMostrarModalImportar] = useState(false);
 
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState('');
@@ -543,18 +547,28 @@ export const CatalogoStockView = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setMostrarModalNuevo(true);
-            setErrorModal(null);
-            if (categorias.length > 0) {
-              handleCambiarCategoriaModal(categorias[0].id);
-            }
-          }}
-          className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-black px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 uppercase tracking-wider transition-colors cursor-pointer shadow-lg"
-        >
-          <Plus className="w-4 h-4" /> Nuevo Producto Base
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setMostrarModalImportar(true)}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 uppercase tracking-wider transition-colors cursor-pointer shadow-lg"
+          >
+            <FileSpreadsheet className="w-4 h-4" /> Importar Excel / CSV
+          </button>
+
+          <button
+            onClick={() => {
+              setMostrarModalNuevo(true);
+              setErrorModal(null);
+              if (categorias.length > 0) {
+                handleCambiarCategoriaModal(categorias[0].id);
+              }
+            }}
+            className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-black px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 uppercase tracking-wider transition-colors cursor-pointer shadow-lg"
+          >
+            <Plus className="w-4 h-4" /> Nuevo Producto Base
+          </button>
+        </div>
       </div>
 
       {mensaje && (
@@ -1052,6 +1066,19 @@ export const CatalogoStockView = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {empresa?.id && sucursalEfectivaId && (
+        <ImportadorCatalogoModal
+          isOpen={mostrarModalImportar}
+          onClose={() => setMostrarModalImportar(false)}
+          empresaId={empresa.id}
+          sucursalId={sucursalEfectivaId}
+          sucursalNombre={sucursalEfectivaNombre}
+          categorias={categorias}
+          talles={talles}
+          onImportacionCompleta={cargarProductos}
+        />
       )}
     </div>
   );

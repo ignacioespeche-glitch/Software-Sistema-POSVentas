@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { SuscripcionGuard } from './components/SuscripcionGuard';
 import { BurbujaSuperAdmin } from './components/BurbujaSuperAdmin';
 import { AnuncioGlobalBanner } from './components/AnuncioGlobalBanner';
+import { ChecklistOnboarding } from './components/ChecklistOnboarding';
 import { CajaTurnosView } from './views/CajaTurnosView';
 import { CatalogoStockView } from './views/CatalogoStockView';
 import { PosView } from './views/PosView';
@@ -84,6 +85,7 @@ const ContenedorPrincipal = () => {
           <>
             <AnuncioGlobalBanner />
             <Navbar />
+            <ChecklistOnboarding />
           </>
         )}
 
