@@ -19,7 +19,8 @@ import {
   Save,
   Building2,
   Store,
-  Trash2
+  Trash2,
+  RotateCcw
 } from 'lucide-react';
 
 // Lista centralizada de módulos: agregando uno acá aparece automáticamente en todos los clientes
@@ -71,6 +72,12 @@ interface MejoraSaaS {
   estado: 'pendiente' | 'en_progreso' | 'completado';
 }
 
+interface InteresadoAnuncio {
+  empresa_id: string;
+  nombre: string;
+  fecha: string;
+}
+
 export const SuperAdminView = () => {
   const [empresas, setEmpresas] = useState<EmpresaMetricas[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +95,7 @@ export const SuperAdminView = () => {
   const [mensajeAnuncio, setMensajeAnuncio] = useState('');
   const [anuncioActivo, setAnuncioActivo] = useState(false);
   const [anuncioId, setAnuncioId] = useState<string | null>(null);
+  const [interesadosAnuncio, setInteresadosAnuncio] = useState<InteresadoAnuncio[]>([]);
 
   // Tablero de viernes (mejoras)
   const [mejoras, setMejoras] = useState<MejoraSaaS[]>([]);
@@ -118,6 +126,7 @@ export const SuperAdminView = () => {
       setAnuncioId(adData.id);
       setMensajeAnuncio(adData.mensaje);
       setAnuncioActivo(adData.activo);
+      setInteresadosAnuncio((adData.interesados as InteresadoAnuncio[]) || []);
     }
 
     const { data: mejData } = await supabase
@@ -299,9 +308,18 @@ export const SuperAdminView = () => {
     } else {
       await supabase
         .from('saas_anuncios')
-        .insert({ mensaje: mensajeAnuncio, activo: anuncioActivo });
+        .insert({ mensaje: mensajeAnuncio, activo: anuncioActivo, interesados: [] });
     }
     alert('Anuncio global actualizado.');
+    cargarTodo();
+  };
+
+  const handleReiniciarInteresados = async () => {
+    if (!anuncioId) return;
+    await supabase
+      .from('saas_anuncios')
+      .update({ interesados: [] })
+      .eq('id', anuncioId);
     cargarTodo();
   };
 
@@ -432,7 +450,7 @@ export const SuperAdminView = () => {
               tabActiva === 'anuncios' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Anuncio Global
+            Anuncio Global {interesadosAnuncio.length > 0 ? `(${interesadosAnuncio.length})` : ''}
           </button>
         </div>
       </div>
@@ -754,41 +772,86 @@ export const SuperAdminView = () => {
 
       {/* TAB 3: ANUNCIO GLOBAL */}
       {tabActiva === 'anuncios' && (
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-2xl space-y-4">
-          <div className="flex items-center gap-2">
-            <Megaphone className="w-5 h-5 text-sky-400" />
-            <h3 className="font-black text-base text-white">Banner de Novedades para Todos los Locales</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
+            <div className="flex items-center gap-2">
+              <Megaphone className="w-5 h-5 text-sky-400" />
+              <h3 className="font-black text-base text-white">Banner de Novedades para Todos los Locales</h3>
+            </div>
+            <p className="text-xs text-slate-400">
+              Si lo activás, aparecerá arriba en todos los locales con un botón <strong>"Estamos interesados"</strong> para medir demanda antes de programar.
+            </p>
+
+            <textarea
+              rows={3}
+              placeholder="Ej. 🚀 Próximamente: Calendario Super Extremo con recordatorios a clientes. ¿Lo querés en tu local?"
+              value={mensajeAnuncio}
+              onChange={(e) => setMensajeAnuncio(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-sky-500"
+            />
+
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={anuncioActivo}
+                  onChange={(e) => setAnuncioActivo(e.target.checked)}
+                  className="rounded border-slate-700"
+                />
+                Mostrar anuncio activo en los locales
+              </label>
+
+              <button
+                type="button"
+                onClick={handleGuardarAnuncio}
+                className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-black px-5 py-2.5 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Save className="w-4 h-4" /> Guardar Anuncio
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-slate-400">
-            Si lo activás, aparecerá una barra informativa discreta en la parte superior de todas las tiendas conectadas.
-          </p>
 
-          <textarea
-            rows={3}
-            placeholder="Ej. 🚀 Nueva actualización: Ya podés buscar prendas por nombre dentro del módulo de Señas."
-            value={mensajeAnuncio}
-            onChange={(e) => setMensajeAnuncio(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-sky-500"
-          />
+          {/* Lista de Locales Interesados */}
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-black text-base text-white">
+                  Locales Interesados ({interesadosAnuncio.length})
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Tiendas que hicieron clic en "Estamos interesados" en este anuncio.
+                </p>
+              </div>
+              {interesadosAnuncio.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleReiniciarInteresados}
+                  className="text-xs text-slate-400 hover:text-white inline-flex items-center gap-1 bg-slate-800 px-3 py-1.5 rounded-xl cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Limpiar lista
+                </button>
+              )}
+            </div>
 
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={anuncioActivo}
-                onChange={(e) => setAnuncioActivo(e.target.checked)}
-                className="rounded border-slate-700"
-              />
-              Mostrar anuncio activo en los locales
-            </label>
-
-            <button
-              type="button"
-              onClick={handleGuardarAnuncio}
-              className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-black px-5 py-2.5 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <Save className="w-4 h-4" /> Guardar Anuncio
-            </button>
+            {interesadosAnuncio.length === 0 ? (
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-6 text-center text-xs text-slate-500">
+                Todavía ningún local tocó el botón de interés en el anuncio actual.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {interesadosAnuncio.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-slate-950 border border-slate-800 px-4 py-2.5 rounded-xl flex items-center justify-between text-xs"
+                  >
+                    <span className="font-black text-emerald-400">🙋‍♂️ {item.nombre}</span>
+                    <span className="text-slate-500">
+                      {new Date(item.fecha).toLocaleDateString('es-AR')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
