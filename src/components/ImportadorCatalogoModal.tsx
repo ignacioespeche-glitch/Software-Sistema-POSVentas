@@ -10,7 +10,8 @@ import {
   AlertTriangle,
   Loader2,
   X,
-  RefreshCw
+  RefreshCw,
+  Info
 } from 'lucide-react';
 
 interface TalleCatalogo {
@@ -45,6 +46,17 @@ interface Props {
   onImportacionCompleta: () => Promise<void>;
 }
 
+const COLUMNAS_PLANTILLA = [
+  { nombre: 'Nombre', obligatoria: true, detalle: 'Nombre de la prenda (ej. Remera Boxy)' },
+  { nombre: 'Categoria', obligatoria: false, detalle: 'Si queda vacío usa tu categoría principal' },
+  { nombre: 'Color', obligatoria: false, detalle: 'Si queda vacío asigna "Negro"' },
+  { nombre: 'Talle', obligatoria: false, detalle: 'S, M, L, XL, 38..48 o U (por defecto "U")' },
+  { nombre: 'SKU', obligatoria: false, detalle: 'Código de barras propio (si queda vacío se genera solo)' },
+  { nombre: 'Precio_Costo', obligatoria: false, detalle: 'Costo unitario sin signo $ (por defecto 0)' },
+  { nombre: 'Precio_Venta', obligatoria: true, detalle: 'Precio al público sin signo $ (mayor a 0)' },
+  { nombre: 'Stock_Inicial', obligatoria: false, detalle: 'Cantidad de unidades (por defecto 0)' }
+];
+
 export const ImportadorCatalogoModal = ({
   isOpen,
   onClose,
@@ -66,43 +78,9 @@ export const ImportadorCatalogoModal = ({
   if (!isOpen) return null;
 
   const handleDescargarPlantilla = () => {
-    const catEjemplo1 = categorias[0]?.nombre || 'Remeras';
-    const catEjemplo2 = categorias[1]?.nombre || 'Pantalones';
-
-    const datosEjemplo = [
-      {
-        Nombre: 'Remera Boxy Heavy',
-        Categoria: catEjemplo1,
-        Color: 'Negro',
-        Talle: 'L',
-        SKU: 'REM-BOX-NEG-L',
-        Precio_Costo: 12000,
-        Precio_Venta: 34000,
-        Stock_Inicial: 10
-      },
-      {
-        Nombre: 'Remera Boxy Heavy',
-        Categoria: catEjemplo1,
-        Color: 'Negro',
-        Talle: 'XL',
-        SKU: 'REM-BOX-NEG-XL',
-        Precio_Costo: 12000,
-        Precio_Venta: 34000,
-        Stock_Inicial: 8
-      },
-      {
-        Nombre: 'Cargo Denim Oversize',
-        Categoria: catEjemplo2,
-        Color: 'Azul',
-        Talle: '42',
-        SKU: 'CAR-DEN-AZU-42',
-        Precio_Costo: 22000,
-        Precio_Venta: 58000,
-        Stock_Inicial: 5
-      }
-    ];
-
-    const ws = XLSX.utils.json_to_sheet(datosEjemplo);
+    // Hoja 1: Solo encabezados exactos y filas completamente vacías para llenar
+    const encabezados = [COLUMNAS_PLANTILLA.map((c) => c.nombre)];
+    const ws = XLSX.utils.aoa_to_sheet(encabezados);
     ws['!cols'] = [
       { wch: 24 },
       { wch: 16 },
@@ -114,9 +92,19 @@ export const ImportadorCatalogoModal = ({
       { wch: 14 }
     ];
 
+    // Hoja 2: Guía rápida de referencia para el cliente
+    const guiaData = COLUMNAS_PLANTILLA.map((c) => ({
+      Columna: c.nombre,
+      Requisito: c.obligatoria ? 'OBLIGATORIA' : 'Opcional',
+      Explicacion: c.detalle
+    }));
+    const wsGuia = XLSX.utils.json_to_sheet(guiaData);
+    wsGuia['!cols'] = [{ wch: 16 }, { wch: 15 }, { wch: 52 }];
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Catalogo_GEMI');
-    XLSX.writeFile(wb, `Plantilla_Catalogo_GEMI_${sucursalNombre.replace(/\s+/g, '_')}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, wsGuia, 'Guia_Columnas');
+    XLSX.writeFile(wb, `Plantilla_Vacia_GEMI_${sucursalNombre.replace(/\s+/g, '_')}.xlsx`);
   };
 
   const normalizarClave = (obj: any, posiblesNombres: string[]) => {
@@ -147,7 +135,12 @@ export const ImportadorCatalogoModal = ({
       const ws = wb.Sheets[wsname];
       const rawData = XLSX.utils.sheet_to_json(ws);
 
-      const procesadas: FilaImportada[] = rawData.map((row: any, idx: number) => {
+      // Filtrar filas completamente vacías por si el usuario dejó renglones en blanco
+      const filasConDatos = rawData.filter((row: any) =>
+        Object.values(row).some((val) => val !== undefined && val !== null && String(val).trim() !== '')
+      );
+
+      const procesadas: FilaImportada[] = filasConDatos.map((row: any, idx: number) => {
         const nombre = String(normalizarClave(row, ['nombre', 'producto', 'prenda', 'titulo'])).trim();
         const categoria =
           String(normalizarClave(row, ['categoria', 'rubro', 'tipo'])).trim() ||
@@ -379,29 +372,30 @@ export const ImportadorCatalogoModal = ({
           </button>
         </div>
 
+        {/* Paso 1 y Paso 2 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-sky-400">
-              Paso 1 · Formato estándar
+              Paso 1 · Plantilla en blanco
             </span>
-            <h4 className="text-xs font-bold text-white">Descargá la plantilla modelo</h4>
+            <h4 className="text-xs font-bold text-white">Descargá el Excel vacío con los encabezados</h4>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Completá tus productos respetando las columnas (<strong>Nombre, Categoria, Color, Talle, SKU, Precio_Costo, Precio_Venta, Stock_Inicial</strong>).
+              Viene sin productos cargados (solo con las columnas exactas y una pestaña de guía) para que completes directo desde la fila 2.
             </p>
             <button
               type="button"
               onClick={handleDescargarPlantilla}
               className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3.5 py-2 rounded-lg text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-400" /> Descargar Plantilla (.xlsx)
+              <Download className="w-3.5 h-3.5 text-emerald-400" /> Descargar Plantilla Vacía (.xlsx)
             </button>
           </div>
 
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
-              Paso 2 · Cargar planilla
+              Paso 2 · Subir archivo completo
             </span>
-            <h4 className="text-xs font-bold text-white">Subí tu archivo Excel o CSV</h4>
+            <h4 className="text-xs font-bold text-white">Cargá tu Excel o CSV ya completado</h4>
             <input
               ref={fileInputRef}
               type="file"
@@ -420,6 +414,38 @@ export const ImportadorCatalogoModal = ({
             </button>
           </div>
         </div>
+
+        {/* Esquema visual de columnas antes de subir archivo */}
+        {filas.length === 0 && (
+          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-1.5 text-xs font-black text-white">
+              <Info className="w-4 h-4 text-sky-400" />
+              <span>Estructura de columnas del archivo:</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {COLUMNAS_PLANTILLA.map((col) => (
+                <div
+                  key={col.nombre}
+                  className="bg-slate-900 border border-slate-800 rounded-lg p-2.5 space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-mono font-bold text-xs text-white">{col.nombre}</span>
+                    <span
+                      className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                        col.obligatoria
+                          ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {col.obligatoria ? 'Obligatoria' : 'Opcional'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-snug">{col.detalle}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {resultadoFinal && (
           <div className="bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 p-4 rounded-xl text-xs font-bold flex items-center gap-2">
