@@ -18,7 +18,8 @@ import {
   ThumbsUp,
   Save,
   Building2,
-  Store
+  Store,
+  Trash2
 } from 'lucide-react';
 
 // Lista centralizada de módulos: agregando uno acá aparece automáticamente en todos los clientes
@@ -91,7 +92,7 @@ export const SuperAdminView = () => {
   // Tablero de viernes (mejoras)
   const [mejoras, setMejoras] = useState<MejoraSaaS[]>([]);
   const [nuevaMejoraTitulo, setNuevaMejoraTitulo] = useState('');
-  const [nuevaMejoraLocal, setNuevaMejoraLocal] = useState('');
+  const [nuevaMejoraLocal, setNuevaMejoraLocal] = useState('General');
 
   const cargarTodo = async () => {
     setLoading(true);
@@ -309,12 +310,12 @@ export const SuperAdminView = () => {
     if (!nuevaMejoraTitulo.trim()) return;
     await supabase.from('saas_mejoras').insert({
       titulo: nuevaMejoraTitulo.trim(),
-      local_origen: nuevaMejoraLocal.trim() || 'General',
+      local_origen: nuevaMejoraLocal || 'General',
       votos: 1,
       estado: 'pendiente'
     });
     setNuevaMejoraTitulo('');
-    setNuevaMejoraLocal('');
+    setNuevaMejoraLocal('General');
     cargarTodo();
   };
 
@@ -328,6 +329,11 @@ export const SuperAdminView = () => {
 
   const handleCambiarEstadoMejora = async (id: string, estado: MejoraSaaS['estado']) => {
     await supabase.from('saas_mejoras').update({ estado }).eq('id', id);
+    cargarTodo();
+  };
+
+  const handleEliminarMejora = async (id: string) => {
+    await supabase.from('saas_mejoras').delete().eq('id', id);
     cargarTodo();
   };
 
@@ -371,7 +377,7 @@ export const SuperAdminView = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
-        Cargando Torre de Control SuperAdmin...
+        Cargando G.E.M.I. Torre de Control...
       </div>
     );
   }
@@ -395,11 +401,11 @@ export const SuperAdminView = () => {
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-sky-400" />
             <h1 className="text-xl md:text-2xl font-black tracking-tight text-white">
-              TORRE DE CONTROL · SUPERADMIN
+              G.E.M.I. · TORRE DE CONTROL
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Gestión de clientes SaaS, semáforo de cobros y seguimiento de Customer Success (separado de Aspen y SouthCol).
+            Gestión de clientes SaaS, semáforo de cobros y seguimiento de Customer Success.
           </p>
         </div>
 
@@ -616,7 +622,7 @@ export const SuperAdminView = () => {
                     {emp.telefono_contacto && (
                       <a
                         href={`https://wa.me/${emp.telefono_contacto.replace(/\D/g, '')}?text=${encodeURIComponent(
-                          `Hola ${emp.nombre_dueno || ''}! Te escribimos del equipo de soporte del sistema POS de ${emp.nombre}.`
+                          `Hola ${emp.nombre_dueno || ''}! Te escribimos del equipo de soporte de G.E.M.I. por el sistema de ${emp.nombre}.`
                         )}`}
                         target="_blank"
                         rel="noreferrer"
@@ -676,13 +682,18 @@ export const SuperAdminView = () => {
               onChange={(e) => setNuevaMejoraTitulo(e.target.value)}
               className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
             />
-            <input
-              type="text"
-              placeholder="Local que lo pidió (ej. Tienda Centro)"
+            <select
               value={nuevaMejoraLocal}
               onChange={(e) => setNuevaMejoraLocal(e.target.value)}
-              className="sm:w-60 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
-            />
+              className="sm:w-64 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+            >
+              <option value="General">General / Idea Interna</option>
+              {empresas.map((emp) => (
+                <option key={emp.empresa_id} value={emp.nombre}>
+                  {emp.nombre} {emp.es_marca_interna ? '(Marca Propia)' : ''}
+                </option>
+              ))}
+            </select>
             <button
               type="submit"
               className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-black px-5 py-2 rounded-xl text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer"
@@ -719,12 +730,21 @@ export const SuperAdminView = () => {
                   <select
                     value={m.estado}
                     onChange={(e) => handleCambiarEstadoMejora(m.id, e.target.value as any)}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs font-bold text-white"
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs font-bold text-white cursor-pointer"
                   >
                     <option value="pendiente">Pendiente</option>
                     <option value="en_progreso">En desarrollo</option>
                     <option value="completado">Listo ✅</option>
                   </select>
+
+                  <button
+                    type="button"
+                    onClick={() => handleEliminarMejora(m.id)}
+                    title="Eliminar pedido"
+                    className="p-2 bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             ))}
@@ -880,7 +900,7 @@ export const SuperAdminView = () => {
 
               <div className="sm:col-span-2">
                 <label className="block font-bold text-slate-400 mb-1">
-                  Link de Pago Mercado Pago (Dejar vacío hasta crear cuenta MP)
+                  Link de Pago Mercado Pago (Opcional: si queda vacío usa Checkout Automático)
                 </label>
                 <input
                   type="url"
