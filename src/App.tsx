@@ -18,6 +18,8 @@ import { OnboardingView } from './views/OnboardingView';
 import { TareasView } from './views/TareasView';
 import { CalendarioView } from './views/CalendarioView';
 import { SuperAdminView } from './views/SuperAdminView';
+import { LandingView } from './views/LandingView';
+import { LegalesView } from './views/LegalesView';
 
 const RutaProtegida = ({ children, soloAdmin = false }: { children: React.ReactNode; soloAdmin?: boolean }) => {
   const { perfil, loading } = useAuth();
@@ -59,16 +61,37 @@ const RutaSuperAdmin = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const InicioInteligente = () => {
+  const { perfil, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
+        Cargando G.E.M.I...
+      </div>
+    );
+  }
+
+  if (perfil && perfil.activo) {
+    return <PosView />;
+  }
+
+  return <LandingView />;
+};
+
 const ContenedorPrincipal = () => {
   const { perfil, loading } = useAuth();
   const location = useLocation();
 
-  const esRutaPublica =
+  const esRutaSinNavbar =
     location.pathname === '/login' ||
     location.pathname === '/onboarding' ||
     location.pathname === '/registro' ||
+    location.pathname === '/terminos' ||
+    location.pathname === '/privacidad' ||
     location.pathname === '/superadmin' ||
-    location.pathname.startsWith('/ticket/');
+    location.pathname.startsWith('/ticket/') ||
+    (location.pathname === '/' && (!perfil || !perfil.activo));
 
   if (loading) {
     return (
@@ -81,7 +104,7 @@ const ContenedorPrincipal = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-sky-500 selection:text-white">
       <SuscripcionGuard>
-        {!esRutaPublica && perfil && perfil.activo && (
+        {!esRutaSinNavbar && perfil && perfil.activo && (
           <>
             <AnuncioGlobalBanner />
             <Navbar />
@@ -93,6 +116,8 @@ const ContenedorPrincipal = () => {
           <Route path="/login" element={<LoginView />} />
           <Route path="/onboarding" element={<OnboardingView />} />
           <Route path="/registro" element={<OnboardingView />} />
+          <Route path="/terminos" element={<LegalesView tipo="terminos" />} />
+          <Route path="/privacidad" element={<LegalesView tipo="privacidad" />} />
           <Route path="/ticket/:id" element={<TicketPublicoView />} />
 
           <Route
@@ -104,14 +129,8 @@ const ContenedorPrincipal = () => {
             }
           />
 
-          <Route
-            path="/"
-            element={
-              <RutaProtegida>
-                <PosView />
-              </RutaProtegida>
-            }
-          />
+          <Route path="/" element={<InicioInteligente />} />
+
           <Route
             path="/caja"
             element={
