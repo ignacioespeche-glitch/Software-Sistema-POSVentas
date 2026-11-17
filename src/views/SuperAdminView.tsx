@@ -151,6 +151,10 @@ export const SuperAdminView = () => {
     return Math.ceil((venc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
   };
 
+  const estaInactivo10Dias = (emp: EmpresaMetricas) => {
+    return !emp.ultima_conexion || emp.dias_sin_conectar >= 10;
+  };
+
   const getSemaforoPago = (emp: EmpresaMetricas) => {
     if (emp.es_marca_interna) {
       return {
@@ -371,7 +375,7 @@ export const SuperAdminView = () => {
     return d <= 5 || e.estado_suscripcion === 'pausado';
   }).length;
 
-  const alertasInactividad = clientesSaaS.filter((e) => e.dias_sin_conectar >= 10).length;
+  const alertasInactividad = empresas.filter((e) => estaInactivo10Dias(e)).length;
 
   // Filtrado de tabla
   const empresasFiltradas = empresas.filter((e) => {
@@ -388,7 +392,7 @@ export const SuperAdminView = () => {
       const d = calcularDiasRestantes(e.fecha_vencimiento);
       return d <= 5 || e.estado_suscripcion === 'pausado';
     }
-    if (filtro === 'inactivos_10d') return !e.es_marca_interna && e.dias_sin_conectar >= 10;
+    if (filtro === 'inactivos_10d') return estaInactivo10Dias(e);
     return true;
   });
 
@@ -490,7 +494,13 @@ export const SuperAdminView = () => {
           <p className="text-[11px] text-slate-500 mt-0.5">Por vencer o pausados</p>
         </div>
 
-        <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-2xl">
+        <div
+          onClick={() => {
+            setTabActiva('clientes');
+            setFiltro('inactivos_10d');
+          }}
+          className="bg-slate-900/80 border border-slate-800 hover:border-rose-500/40 p-4 rounded-2xl cursor-pointer transition-colors"
+        >
           <div className="flex items-center justify-between text-slate-400 text-xs font-bold">
             <span>Inactivos +10 días</span>
             <Activity className="w-4 h-4 text-rose-400" />
@@ -582,7 +592,7 @@ export const SuperAdminView = () => {
                       </span>
                       <span
                         className={`text-xs font-black ${
-                          emp.dias_sin_conectar >= 10
+                          estaInactivo10Dias(emp)
                             ? 'text-rose-400'
                             : emp.dias_sin_conectar >= 5
                             ? 'text-amber-400'
