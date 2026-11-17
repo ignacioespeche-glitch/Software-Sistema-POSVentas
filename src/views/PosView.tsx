@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { guardarVentaOffline } from '../lib/offlineSync';
+import { registrarAuditoria } from '../lib/auditoria';
 import { 
   Search, 
   ShoppingCart, 
@@ -18,7 +19,8 @@ import {
   Percent,
   DollarSign,
   X,
-  Send
+  Send,
+  Lock
 } from 'lucide-react';
 
 interface CarritoItem {
@@ -48,6 +50,9 @@ export const PosView = () => {
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>('todos');
   const [categorias, setCategorias] = useState<any[]>([]);
 
+  // Reglas de seguridad de descuentos de la empresa
+  const [reglasDescuento, setReglasDescuento] = useState({ maxPct: 10, pinAdmin: '1234' });
+
   const [carritos, setCarritos] = useState<CarritoPestaña[]>([
     { id: '1', nombre: 'Venta #1', items: [], descuentoTipo: 'ninguno', descuentoValor: 0 }
   ]);
@@ -58,6 +63,8 @@ export const PosView = () => {
   const [mostrarModalDescuento, setMostrarModalDescuento] = useState(false);
   const [tipoDescuentoTemp, setTipoDescuentoTemp] = useState<'monto' | 'porcentaje'>('monto');
   const [valorDescuentoTemp, setValorDescuentoTemp] = useState('');
+  const [pinAdminTemp, setPinAdminTemp] = useState('');
+  const [errorPinDescuento, setErrorPinDescuento] = useState<string | null>(null);
 
   const [mostrarModalCobro, setMostrarModalCobro] = useState(false);
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'transferencia' | 'debito' | 'credito' | 'mixto'>('efectivo');
@@ -87,8 +94,25 @@ export const PosView = () => {
   useEffect(() => {
     if (sucursalActiva && empresa?.id) {
       cargarCatalogoPOS();
+      cargarReglasSeguridad();
     }
   }, [sucursalActiva, empresa?.id]);
+
+  const cargarReglasSeguridad = async () => {
+    if (!empresa?.id) return;
+    const { data } = await supabase
+      .from('empresas')
+      .select('max_descuento_vendedor_pct, pin_autorizacion_admin')
+      .eq('id', empresa.id)
+      .single();
+
+    if (data) {
+      setReglasDescuento({
+        maxPct: Number(data.max_descuento_vendedor_pct ?? 10),
+        pinAdmin: data.pin_autorizacion_admin || '1234'
+      });
+    }
+  };
 
   const cargarCatalogoPOS = async () => {
     if (!sucursalActiva || !empresa?.id) return;
@@ -211,7 +235,7 @@ export const PosView = () => {
     const stockActual = variante.stock_sucursal?.find((s: any) => s.sucursal_id === sucursalActiva?.id)?.cantidad || 0;
 
     if (stockActual <= 0 && navigator.onLine) {
-      setMensajePos(`Sin stock para ${producto.nombre} (${variante.color} • Talle ${variante.talles_catalogo?.etiqueta}) en este local.`);
+      setMensajePos(`Sin stock para ${producto.nombre} (${variante.color} · Talle ${variante.talles_catalogo?.etiqueta}) en este local.`);
       return;
     }
 
@@ -273,15 +297,52 @@ export const PosView = () => {
     );
   };
 
+  const subtotal = carritoActual.items.reduce((acc, item) => acc + item.precioUnitario * item.cantidad, 0);
+
+  const calcularPorcentajeEfectivoDescuento = (tipo: 'monto' | 'porcentaje', val: number) => {
+    if (subtotal <= 0 || val <= 0) return 0;
+    if (tipo === 'porcentaje') return val;
+    return (val / subtotal) * 100;
+  };
+
   const abrirModalDescuento = () => {
     setTipoDescuentoTemp(carritoActual.descuentoTipo === 'porcentaje' ? 'porcentaje' : 'monto');
     setValorDescuentoTemp(carritoActual.descuentoValor > 0 ? carritoActual.descuentoValor.toString() : '');
+    setPinAdminTemp('');
+    setErrorPinDescuento(null);
     setMostrarModalDescuento(true);
   };
 
-  const aplicarDescuento = (e: React.FormEvent) => {
+  const porcentajeTemp = calcularPorcentajeEfectivoDescuento(
+    tipoDescuentoTemp,
+    parseFloat(valorDescuentoTemp) || 0
+  );
+  const requierePinAdmin = perfil?.rol !== 'admin' && porcentajeTemp > reglasDescuento.maxPct;
+
+  const aplicarDescuento = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorPinDescuento(null);
     const val = parseFloat(valorDescuentoTemp) || 0;
+
+    if (val > 0 && requierePinAdmin) {
+      if (pinAdminTemp.trim() !== reglasDescuento.pinAdmin) {
+        setErrorPinDescuento('PIN de Administrador incorrecto.');
+        return;
+      }
+
+      if (empresa?.id) {
+        await registrarAuditoria({
+          empresaId: empresa.id,
+          sucursalId: sucursalActiva?.id,
+          usuarioId: perfil?.id,
+          usuarioNombre: `${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim(),
+          accion: 'DESCUENTO_ESPECIAL_AUTORIZADO',
+          detalle: `Descuento de ${porcentajeTemp.toFixed(1)}% ($${
+            tipoDescuentoTemp === 'porcentaje' ? Math.round((subtotal * val) / 100) : val
+          }) autorizado con PIN sobre subtotal de $${subtotal.toLocaleString()}.`
+        });
+      }
+    }
 
     setCarritos((prev) =>
       prev.map((c) => {
@@ -307,7 +368,6 @@ export const PosView = () => {
     setMostrarModalDescuento(false);
   };
 
-  const subtotal = carritoActual.items.reduce((acc, item) => acc + item.precioUnitario * item.cantidad, 0);
   let descuentoTotal = 0;
   if (carritoActual.descuentoTipo === 'porcentaje') {
     descuentoTotal = (subtotal * carritoActual.descuentoValor) / 100;
@@ -481,7 +541,7 @@ export const PosView = () => {
 
     const linkComprobante = `${window.location.origin}/ticket/${toastExito.ventaId}`;
     const nombreParaMensaje = toastExito.clienteNombre || 'genio/a';
-    const nombreMarca = empresa?.nombre?.toUpperCase() || 'ASPEN CLOTHING';
+    const nombreMarca = empresa?.nombre?.toUpperCase() || 'G.E.M.I.';
 
     const mensaje = encodeURIComponent(
       `BUENASSS ${nombreParaMensaje.toUpperCase()}! 👋\n` +
@@ -708,7 +768,7 @@ export const PosView = () => {
                 <div>
                   <p className="font-bold text-slate-100">{item.productoNombre}</p>
                   <p className="text-slate-400 text-[11px]">
-                    {item.color} • Talle {item.talle}
+                    {item.color} · Talle {item.talle}
                   </p>
                   <p className="text-emerald-400 font-semibold mt-0.5">
                     ${Number(item.precioUnitario).toLocaleString()}
@@ -870,6 +930,12 @@ export const PosView = () => {
               </button>
             </div>
 
+            {perfil?.rol !== 'admin' && (
+              <p className="text-[11px] text-slate-400 bg-slate-950 border border-slate-800 px-3 py-2 rounded-lg">
+                Tope libre para vendedores: <strong className="text-sky-400">hasta {reglasDescuento.maxPct}%</strong>. Superando ese porcentaje requiere PIN de Administrador.
+              </p>
+            )}
+
             <form onSubmit={aplicarDescuento} className="space-y-4 text-xs">
               <div>
                 <label className="block uppercase font-bold text-slate-400 mb-1.5">Tipo de Bonificación</label>
@@ -915,6 +981,25 @@ export const PosView = () => {
                   className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-sm text-white font-mono font-bold focus:outline-none"
                 />
               </div>
+
+              {requierePinAdmin && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-2">
+                  <label className="flex items-center gap-1.5 uppercase font-black text-amber-400 text-[11px]">
+                    <Lock className="w-3.5 h-3.5" /> Autorización de Admin ({porcentajeTemp.toFixed(1)}%)
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Ingresá PIN de Administrador"
+                    value={pinAdminTemp}
+                    onChange={(e) => setPinAdminTemp(e.target.value)}
+                    className="w-full bg-slate-950 border border-amber-500/40 rounded-lg px-3 py-2 text-sm text-white font-mono tracking-widest focus:outline-none"
+                  />
+                  {errorPinDescuento && (
+                    <p className="text-[11px] text-rose-400 font-bold">{errorPinDescuento}</p>
+                  )}
+                </div>
+              )}
 
               {subtotal > 0 && (
                 <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 space-y-1 text-[11px] text-slate-400">
@@ -1159,7 +1244,7 @@ export const PosView = () => {
                     <p className="font-bold uppercase text-[10px] text-slate-500">Prendas:</p>
                     {ticketDetalleVendedor.ventas_detalle?.map((d: any) => (
                       <div key={d.id} className="flex justify-between text-slate-300">
-                        <span>{d.variantes?.productos?.nombre} ({d.variantes?.color} • Talle {d.variantes?.talles_catalogo?.etiqueta}) ×{d.cantidad}</span>
+                        <span>{d.variantes?.productos?.nombre} ({d.variantes?.color} · Talle {d.variantes?.talles_catalogo?.etiqueta}) ×{d.cantidad}</span>
                         <span className="font-mono">${Number(d.subtotal_linea).toLocaleString()}</span>
                       </div>
                     ))}

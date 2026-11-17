@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { registrarAuditoria } from '../lib/auditoria';
 import type { Categoria } from '../types/database';
 import { ImportadorCatalogoModal } from '../components/ImportadorCatalogoModal';
 import { 
@@ -26,6 +27,7 @@ interface TalleCatalogo {
 
 export const CatalogoStockView = () => {
   const { perfil, sucursalActiva, empresa } = useAuth();
+  const esAdmin = perfil?.rol === 'admin';
 
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [talles, setTalles] = useState<TalleCatalogo[]>([]);
@@ -61,7 +63,7 @@ export const CatalogoStockView = () => {
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: 'error' | 'exito'; texto: string } | null>(null);
 
-  const sucursalEfectivaId = perfil?.rol === 'admin' 
+  const sucursalEfectivaId = esAdmin 
     ? (sucursalActiva?.id || perfil?.sucursal_id) 
     : (perfil?.sucursal_id || sucursalActiva?.id);
 
@@ -212,6 +214,8 @@ export const CatalogoStockView = () => {
     setErrorModal(null);
     setMensaje(null);
 
+    if (!esAdmin) return;
+
     if (!sucursalEfectivaId || !empresa?.id) {
       setErrorModal('No se detectó la sucursal o la empresa asignada del usuario.');
       return;
@@ -323,7 +327,7 @@ export const CatalogoStockView = () => {
   };
 
   const abrirModalEditar = () => {
-    if (!productoSeleccionado) return;
+    if (!productoSeleccionado || !esAdmin) return;
     const precios = obtenerPreciosSucursal(productoSeleccionado);
     setEditNombre(productoSeleccionado.nombre);
     setEditCategoriaId(productoSeleccionado.categoria_id);
@@ -334,23 +338,21 @@ export const CatalogoStockView = () => {
 
   const handleGuardarEdicion = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!productoSeleccionado || !sucursalEfectivaId) return;
+    if (!productoSeleccionado || !sucursalEfectivaId || !esAdmin) return;
 
     setGuardandoEdicion(true);
     setMensaje(null);
 
     try {
-      if (perfil?.rol === 'admin') {
-        const { error: errProd } = await supabase
-          .from('productos')
-          .update({
-            nombre: editNombre.trim(),
-            categoria_id: editCategoriaId
-          })
-          .eq('id', productoSeleccionado.id);
+      const { error: errProd } = await supabase
+        .from('productos')
+        .update({
+          nombre: editNombre.trim(),
+          categoria_id: editCategoriaId
+        })
+        .eq('id', productoSeleccionado.id);
 
-        if (errProd) throw errProd;
-      }
+      if (errProd) throw errProd;
 
       const { error: errPrecio } = await supabase
         .from('productos_precios_sucursal')
@@ -364,6 +366,17 @@ export const CatalogoStockView = () => {
 
       if (errPrecio) throw errPrecio;
 
+      if (empresa?.id) {
+        await registrarAuditoria({
+          empresaId: empresa.id,
+          sucursalId: sucursalEfectivaId,
+          usuarioId: perfil?.id,
+          usuarioNombre: `${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim(),
+          accion: 'PRECIO_PRODUCTO_EDITADO',
+          detalle: `Producto "${editNombre.trim()}" actualizado en ${sucursalEfectivaNombre} (Venta: $${Number(editPrecioVenta).toLocaleString()}).`
+        });
+      }
+
       setMostrarModalEditar(false);
       await cargarProductos();
       setMensaje({ tipo: 'exito', texto: `¡Precios actualizados para ${sucursalEfectivaNombre}!` });
@@ -375,11 +388,12 @@ export const CatalogoStockView = () => {
   };
 
   const handleEliminarProducto = async () => {
-    if (!productoSeleccionado || !sucursalEfectivaId) return;
+    if (!productoSeleccionado || !sucursalEfectivaId || !esAdmin) return;
     setEliminandoProducto(true);
     setMensaje(null);
 
     try {
+      const nombreEliminado = productoSeleccionado.nombre;
       const varianteIds = (productoSeleccionado.variantes || []).map((v: any) => v.id);
 
       if (varianteIds.length > 0) {
@@ -396,18 +410,27 @@ export const CatalogoStockView = () => {
         .eq('producto_id', productoSeleccionado.id)
         .eq('sucursal_id', sucursalEfectivaId);
 
-      if (perfil?.rol === 'admin') {
-        const { count } = await supabase
-          .from('stock_sucursal')
-          .select('*', { count: 'exact', head: true })
-          .in('variante_id', varianteIds);
+      const { count } = await supabase
+        .from('stock_sucursal')
+        .select('*', { count: 'exact', head: true })
+        .in('variante_id', varianteIds);
 
-        if (!count || count === 0) {
-          await supabase
-            .from('productos')
-            .update({ activo: false })
-            .eq('id', productoSeleccionado.id);
-        }
+      if (!count || count === 0) {
+        await supabase
+          .from('productos')
+          .update({ activo: false })
+          .eq('id', productoSeleccionado.id);
+      }
+
+      if (empresa?.id) {
+        await registrarAuditoria({
+          empresaId: empresa.id,
+          sucursalId: sucursalEfectivaId,
+          usuarioId: perfil?.id,
+          usuarioNombre: `${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim(),
+          accion: 'PRODUCTO_DADO_DE_BAJA',
+          detalle: `Se dio de baja "${nombreEliminado}" en ${sucursalEfectivaNombre}.`
+        });
       }
 
       setMostrarModalEliminar(false);
@@ -478,6 +501,8 @@ export const CatalogoStockView = () => {
     setMensaje(null);
 
     try {
+      const cambiosLog: string[] = [];
+
       for (const variante of productoSeleccionado.variantes || []) {
         const valorInput = matrizValores[variante.id] ?? 0;
         const stockActual = variante.stock_sucursal?.find((s: any) => s.sucursal_id === sucursalEfectivaId)?.cantidad || 0;
@@ -489,6 +514,12 @@ export const CatalogoStockView = () => {
 
         const finalCalculado = Math.max(0, nuevoStock);
 
+        if (finalCalculado !== stockActual) {
+          cambiosLog.push(
+            `${variante.color} T.${variante.talles_catalogo?.etiqueta || 'U'}: ${stockActual} -> ${finalCalculado}`
+          );
+        }
+
         await supabase
           .from('stock_sucursal')
           .upsert({
@@ -497,6 +528,17 @@ export const CatalogoStockView = () => {
             cantidad: finalCalculado,
             updated_at: new Date().toISOString()
           }, { onConflict: 'variante_id,sucursal_id' });
+      }
+
+      if (cambiosLog.length > 0 && empresa?.id) {
+        await registrarAuditoria({
+          empresaId: empresa.id,
+          sucursalId: sucursalEfectivaId,
+          usuarioId: perfil?.id,
+          usuarioNombre: `${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim(),
+          accion: 'AJUSTE_STOCK_MANUAL',
+          detalle: `${productoSeleccionado.nombre} (${sucursalEfectivaNombre}): ${cambiosLog.join(', ')}`
+        });
       }
 
       setMensaje({ tipo: 'exito', texto: `¡Stock guardado en ${sucursalEfectivaNombre}!` });
@@ -543,32 +585,34 @@ export const CatalogoStockView = () => {
             Catálogo & Matriz de Stock
           </h1>
           <p className="text-sm text-slate-400">
-            Control de inventario y precios exclusivo para <strong className="text-sky-400">{sucursalEfectivaNombre}</strong>
+            Control de inventario {esAdmin ? 'y precios ' : ''}exclusivo para <strong className="text-sky-400">{sucursalEfectivaNombre}</strong>
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setMostrarModalImportar(true)}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 uppercase tracking-wider transition-colors cursor-pointer shadow-lg"
-          >
-            <FileSpreadsheet className="w-4 h-4" /> Importar Excel / CSV
-          </button>
+        {esAdmin && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setMostrarModalImportar(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 uppercase tracking-wider transition-colors cursor-pointer shadow-lg"
+            >
+              <FileSpreadsheet className="w-4 h-4" /> Importar Excel / CSV
+            </button>
 
-          <button
-            onClick={() => {
-              setMostrarModalNuevo(true);
-              setErrorModal(null);
-              if (categorias.length > 0) {
-                handleCambiarCategoriaModal(categorias[0].id);
-              }
-            }}
-            className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-black px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 uppercase tracking-wider transition-colors cursor-pointer shadow-lg"
-          >
-            <Plus className="w-4 h-4" /> Nuevo Producto Base
-          </button>
-        </div>
+            <button
+              onClick={() => {
+                setMostrarModalNuevo(true);
+                setErrorModal(null);
+                if (categorias.length > 0) {
+                  handleCambiarCategoriaModal(categorias[0].id);
+                }
+              }}
+              className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-black px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 uppercase tracking-wider transition-colors cursor-pointer shadow-lg"
+            >
+              <Plus className="w-4 h-4" /> Nuevo Producto Base
+            </button>
+          </div>
+        )}
       </div>
 
       {mensaje && (
@@ -630,12 +674,14 @@ export const CatalogoStockView = () => {
                     </span>
                   </div>
 
-                  <div className="mt-2 pt-2 border-t border-slate-900 flex justify-between text-[10px] text-slate-500 font-medium">
-                    <span>Costo ({sucursalEfectivaNombre}): ${pSucursal.costo.toLocaleString()}</span>
-                    <span className="text-sky-400 font-bold">
-                      Margen: +{margen}%
-                    </span>
-                  </div>
+                  {esAdmin && (
+                    <div className="mt-2 pt-2 border-t border-slate-900 flex justify-between text-[10px] text-slate-500 font-medium">
+                      <span>Costo ({sucursalEfectivaNombre}): ${pSucursal.costo.toLocaleString()}</span>
+                      <span className="text-sky-400 font-bold">
+                        Margen: +{margen}%
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -652,27 +698,31 @@ export const CatalogoStockView = () => {
                       Matriz de Stock: {productoSeleccionado.nombre}
                     </h2>
                     
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={abrirModalEditar}
-                        title={`Editar precios para ${sucursalEfectivaNombre}`}
-                        className="p-1.5 bg-slate-800 hover:bg-sky-500 hover:text-slate-950 text-slate-300 rounded-lg transition-colors cursor-pointer"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setMostrarModalEliminar(true)}
-                        title={`Eliminar prenda de ${sucursalEfectivaNombre}`}
-                        className="p-1.5 bg-slate-800 hover:bg-rose-600 hover:text-white text-rose-400 rounded-lg transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {esAdmin && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={abrirModalEditar}
+                          title={`Editar precios para ${sucursalEfectivaNombre}`}
+                          className="p-1.5 bg-slate-800 hover:bg-sky-500 hover:text-slate-950 text-slate-300 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setMostrarModalEliminar(true)}
+                          title={`Eliminar prenda de ${sucursalEfectivaNombre}`}
+                          className="p-1.5 bg-slate-800 hover:bg-rose-600 hover:text-white text-rose-400 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex gap-4 mt-1 text-xs text-slate-400">
                     <span>Venta actual: <strong className="text-emerald-400 font-mono">${preciosSeleccionado.venta.toLocaleString()}</strong></span>
-                    <span>Costo taller: <strong className="text-slate-200 font-mono">${preciosSeleccionado.costo.toLocaleString()}</strong></span>
+                    {esAdmin && (
+                      <span>Costo taller: <strong className="text-slate-200 font-mono">${preciosSeleccionado.costo.toLocaleString()}</strong></span>
+                    )}
                     <span className="text-slate-500">Navegá casilleros con <kbd className="px-1 py-0.5 bg-slate-800 rounded text-slate-300">Tab</kbd></span>
                   </div>
                 </div>
@@ -787,7 +837,7 @@ export const CatalogoStockView = () => {
         </div>
       </div>
 
-      {mostrarModalEditar && (
+      {mostrarModalEditar && esAdmin && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
@@ -813,20 +863,18 @@ export const CatalogoStockView = () => {
                 <input
                   type="text"
                   required
-                  disabled={perfil?.rol !== 'admin'}
                   value={editNombre}
                   onChange={(e) => setEditNombre(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500 disabled:opacity-60"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500"
                 />
               </div>
 
               <div>
                 <label className="block uppercase font-bold text-slate-400 mb-1">Categoría</label>
                 <select
-                  disabled={perfil?.rol !== 'admin'}
                   value={editCategoriaId}
                   onChange={(e) => setEditCategoriaId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500 disabled:opacity-60"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500"
                 >
                   {categorias.map((c) => (
                     <option key={c.id} value={c.id}>{c.nombre}</option>
@@ -882,7 +930,7 @@ export const CatalogoStockView = () => {
         </div>
       )}
 
-      {mostrarModalEliminar && (
+      {mostrarModalEliminar && esAdmin && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
             <div className="text-center space-y-2">
@@ -919,7 +967,7 @@ export const CatalogoStockView = () => {
         </div>
       )}
 
-      {mostrarModalNuevo && (
+      {mostrarModalNuevo && esAdmin && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
             <div className="border-b border-slate-800 pb-3">
@@ -1068,7 +1116,7 @@ export const CatalogoStockView = () => {
         </div>
       )}
 
-      {empresa?.id && sucursalEfectivaId && (
+      {empresa?.id && sucursalEfectivaId && esAdmin && (
         <ImportadorCatalogoModal
           isOpen={mostrarModalImportar}
           onClose={() => setMostrarModalImportar(false)}

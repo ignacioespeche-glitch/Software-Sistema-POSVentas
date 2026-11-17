@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { registrarAuditoria } from '../lib/auditoria';
 import type { Sucursal } from '../types/database';
 import { 
   BarChart3, 
@@ -22,7 +23,10 @@ import {
   ArrowLeftRight, 
   Search, 
   Calendar, 
-  WalletCards 
+  WalletCards,
+  Ban,
+  KeyRound,
+  History
 } from 'lucide-react';
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -52,6 +56,12 @@ export const AdminView = () => {
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [todosLosTraspasos, setTodosLosTraspasos] = useState<any[]>([]);
   const [turnosCaja, setTurnosCaja] = useState<any[]>([]);
+  const [logsAuditoria, setLogsAuditoria] = useState<any[]>([]);
+
+  // Configuración de seguridad de descuentos
+  const [maxDescuentoPct, setMaxDescuentoPct] = useState<number>(10);
+  const [pinAdmin, setPinAdmin] = useState<string>('1234');
+  const [guardandoSeguridad, setGuardandoSeguridad] = useState(false);
 
   const [busquedaMatrizStock, setBusquedaMatrizStock] = useState<string>('');
 
@@ -64,6 +74,7 @@ export const AdminView = () => {
   const [ventaSeleccionada, setVentaSeleccionada] = useState<any | null>(null);
   const [editandoMetodo, setEditandoMetodo] = useState<boolean>(false);
   const [nuevoMetodoPago, setNuevoMetodoPago] = useState<string>('');
+  const [anulandoVenta, setAnulandoVenta] = useState<boolean>(false);
 
   useEffect(() => {
     cargarDatosAdmin();
@@ -71,6 +82,28 @@ export const AdminView = () => {
 
   const cargarDatosAdmin = async () => {
     const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+
+    if (empresaIdEfectivo) {
+      const { data: empData } = await supabase
+        .from('empresas')
+        .select('max_descuento_vendedor_pct, pin_autorizacion_admin')
+        .eq('id', empresaIdEfectivo)
+        .single();
+
+      if (empData) {
+        setMaxDescuentoPct(Number(empData.max_descuento_vendedor_pct ?? 10));
+        setPinAdmin(empData.pin_autorizacion_admin || '1234');
+      }
+
+      const { data: logsData } = await supabase
+        .from('auditoria_logs')
+        .select('*')
+        .eq('empresa_id', empresaIdEfectivo)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (logsData) setLogsAuditoria(logsData);
+    }
 
     let querySucs = supabase.from('sucursales').select('*').order('nombre');
     if (empresaIdEfectivo) {
@@ -88,6 +121,7 @@ export const AdminView = () => {
         clientes (nombre, telefono_whatsapp),
         ventas_detalle (
           id,
+          variante_id,
           cantidad,
           precio_unitario_cobrado,
           costo_unitario_historico,
@@ -225,7 +259,40 @@ export const AdminView = () => {
     if (turnosData) setTurnosCaja(turnosData);
   };
 
+  const handleGuardarSeguridad = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+    if (!empresaIdEfectivo) return;
+
+    setGuardandoSeguridad(true);
+    const { error } = await supabase
+      .from('empresas')
+      .update({
+        max_descuento_vendedor_pct: Number(maxDescuentoPct),
+        pin_autorizacion_admin: pinAdmin.trim() || '1234'
+      })
+      .eq('id', empresaIdEfectivo);
+
+    if (!error) {
+      await registrarAuditoria({
+        empresaId: empresaIdEfectivo,
+        usuarioId: perfil?.id,
+        usuarioNombre: `${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim(),
+        accion: 'CONFIG_SEGURIDAD_ACTUALIZADA',
+        detalle: `Tope de descuento vendedor ajustado a ${maxDescuentoPct}% y PIN actualizado.`
+      });
+      alert('Reglas de seguridad actualizadas.');
+      cargarDatosAdmin();
+    } else {
+      alert('Error al guardar: ' + error.message);
+    }
+    setGuardandoSeguridad(false);
+  };
+
   const handleCambiarEstadoUsuario = async (userId: string, nuevoEstado: boolean) => {
+    const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+    const usuarioObj = usuarios.find((u) => u.id === userId);
+
     const { error } = await supabase
       .from('perfiles')
       .update({ activo: nuevoEstado })
@@ -234,6 +301,15 @@ export const AdminView = () => {
     if (error) {
       alert('Error actualizando permisos: ' + error.message);
     } else {
+      if (empresaIdEfectivo) {
+        await registrarAuditoria({
+          empresaId: empresaIdEfectivo,
+          usuarioId: perfil?.id,
+          usuarioNombre: `${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim(),
+          accion: nuevoEstado ? 'USUARIO_HABILITADO' : 'USUARIO_SUSPENDIDO',
+          detalle: `Usuario ${usuarioObj?.nombre || userId} fue ${nuevoEstado ? 'habilitado' : 'suspendido'}.`
+        });
+      }
       cargarDatosAdmin();
     }
   };
@@ -253,6 +329,8 @@ export const AdminView = () => {
 
   const handleGuardarMetodoPago = async () => {
     if (!ventaSeleccionada || !nuevoMetodoPago) return;
+    const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+    const metodoAnterior = ventaSeleccionada.metodo_pago;
 
     const { error } = await supabase
       .from('ventas')
@@ -262,9 +340,85 @@ export const AdminView = () => {
     if (error) {
       alert('Error al actualizar el método de pago: ' + error.message);
     } else {
+      if (empresaIdEfectivo) {
+        await registrarAuditoria({
+          empresaId: empresaIdEfectivo,
+          sucursalId: ventaSeleccionada.sucursal_id,
+          usuarioId: perfil?.id,
+          usuarioNombre: `${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim(),
+          accion: 'METODO_PAGO_EDITADO',
+          detalle: `Ticket #${ventaSeleccionada.id.slice(0, 8)} ($${Number(ventaSeleccionada.total_final).toLocaleString()}): cambió de "${metodoAnterior}" a "${nuevoMetodoPago}".`
+        });
+      }
       setVentaSeleccionada({ ...ventaSeleccionada, metodo_pago: nuevoMetodoPago });
       setEditandoMetodo(false);
       cargarDatosAdmin();
+    }
+  };
+
+  const handleAnularVenta = async () => {
+    if (!ventaSeleccionada || ventaSeleccionada.estado === 'anulada') return;
+    const confirmar = window.confirm(
+      `¿Confirmás ANULAR este ticket por $${Number(ventaSeleccionada.total_final).toLocaleString()}? Se devolverá el stock automáticamente a ${ventaSeleccionada.sucursales?.nombre}.`
+    );
+    if (!confirmar) return;
+
+    setAnulandoVenta(true);
+    const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+
+    try {
+      // 1. Devolver stock de cada prenda
+      for (const det of ventaSeleccionada.ventas_detalle || []) {
+        if (det.variante_id) {
+          const { data: stockAct } = await supabase
+            .from('stock_sucursal')
+            .select('cantidad')
+            .eq('variante_id', det.variante_id)
+            .eq('sucursal_id', ventaSeleccionada.sucursal_id)
+            .maybeSingle();
+
+          const nuevaCant = Number(stockAct?.cantidad || 0) + Number(det.cantidad || 0);
+
+          await supabase
+            .from('stock_sucursal')
+            .upsert(
+              {
+                variante_id: det.variante_id,
+                sucursal_id: ventaSeleccionada.sucursal_id,
+                cantidad: nuevaCant,
+                updated_at: new Date().toISOString()
+              },
+              { onConflict: 'variante_id,sucursal_id' }
+            );
+        }
+      }
+
+      // 2. Marcar venta como anulada
+      const { error } = await supabase
+        .from('ventas')
+        .update({ estado: 'anulada' })
+        .eq('id', ventaSeleccionada.id);
+
+      if (error) throw error;
+
+      // 3. Registrar en auditoría
+      if (empresaIdEfectivo) {
+        await registrarAuditoria({
+          empresaId: empresaIdEfectivo,
+          sucursalId: ventaSeleccionada.sucursal_id,
+          usuarioId: perfil?.id,
+          usuarioNombre: `${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim(),
+          accion: 'VENTA_ANULADA',
+          detalle: `Ticket #${ventaSeleccionada.id.slice(0, 8)} por $${Number(ventaSeleccionada.total_final).toLocaleString()} fue ANULADO y su stock reingresado en ${ventaSeleccionada.sucursales?.nombre}.`
+        });
+      }
+
+      setVentaSeleccionada(null);
+      cargarDatosAdmin();
+    } catch (err: any) {
+      alert('Error al anular venta: ' + err.message);
+    } finally {
+      setAnulandoVenta(false);
     }
   };
 
@@ -444,6 +598,7 @@ export const AdminView = () => {
         </div>
       </div>
 
+      {/* Auditoría de Cajas & Turnos */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
         <div>
           <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -541,6 +696,7 @@ export const AdminView = () => {
         </div>
       </div>
 
+      {/* Historial de Ventas Detallado */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
           <div>
@@ -637,49 +793,61 @@ export const AdminView = () => {
                   </td>
                 </tr>
               ) : (
-                ventasFiltradasHistorial.map((v) => (
-                  <tr key={v.id} className="hover:bg-slate-800/30">
-                    <td className="px-4 py-3 font-mono text-slate-300">
-                      {new Date(v.created_at).toLocaleDateString()}{' '}
-                      {new Date(v.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} hs
-                    </td>
-                    <td className="px-3 py-3 font-medium text-slate-300">
-                      {v.sucursales?.nombre}
-                    </td>
-                    <td className="px-3 py-3 font-semibold text-sky-400">
-                      {v.perfiles ? `${v.perfiles.nombre} ${v.perfiles.apellido || ''}` : 'Vendedor Mostrador'}
-                    </td>
-                    <td className="px-3 py-3 text-slate-300">
-                      {v.clientes?.nombre || 'Consumidor Final'}
-                    </td>
-                    <td className="px-3 py-3 capitalize font-bold text-slate-300">
-                      <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800">
-                        {v.metodo_pago === 'transferencia' ? 'Mercado Pago / Transf.' : v.metodo_pago}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-right font-black text-emerald-400 font-mono text-sm">
-                      ${Number(v.total_final).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-3 text-center">
-                      <button
-                        onClick={() => {
-                          setVentaSeleccionada(v);
-                          setNuevoMetodoPago(v.metodo_pago);
-                          setEditandoMetodo(false);
-                        }}
-                        className="bg-slate-800 hover:bg-sky-500 hover:text-slate-950 text-slate-300 px-2.5 py-1.5 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5" /> Ver / Editar
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                ventasFiltradasHistorial.map((v) => {
+                  const estaAnulada = v.estado === 'anulada';
+                  return (
+                    <tr key={v.id} className={`hover:bg-slate-800/30 ${estaAnulada ? 'opacity-60 bg-rose-950/10' : ''}`}>
+                      <td className="px-4 py-3 font-mono text-slate-300">
+                        {new Date(v.created_at).toLocaleDateString()}{' '}
+                        {new Date(v.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} hs
+                      </td>
+                      <td className="px-3 py-3 font-medium text-slate-300">
+                        {v.sucursales?.nombre}
+                      </td>
+                      <td className="px-3 py-3 font-semibold text-sky-400">
+                        {v.perfiles ? `${v.perfiles.nombre} ${v.perfiles.apellido || ''}` : 'Vendedor Mostrador'}
+                      </td>
+                      <td className="px-3 py-3 text-slate-300">
+                        {v.clientes?.nombre || 'Consumidor Final'}
+                      </td>
+                      <td className="px-3 py-3 capitalize font-bold text-slate-300">
+                        <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800">
+                          {v.metodo_pago === 'transferencia' ? 'Mercado Pago / Transf.' : v.metodo_pago}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-right font-black font-mono text-sm">
+                        {estaAnulada ? (
+                          <span className="text-rose-400 line-through">
+                            ${Number(v.total_final).toLocaleString()} (ANULADA)
+                          </span>
+                        ) : (
+                          <span className="text-emerald-400">
+                            ${Number(v.total_final).toLocaleString()}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <button
+                          onClick={() => {
+                            setVentaSeleccionada(v);
+                            setNuevoMetodoPago(v.metodo_pago);
+                            setEditandoMetodo(false);
+                          }}
+                          className="bg-slate-800 hover:bg-sky-500 hover:text-slate-950 text-slate-300 px-2.5 py-1.5 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Ver / Editar
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
+      {/* Trazabilidad de Traspasos */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
         <div className="flex justify-between items-center">
           <div>
@@ -745,7 +913,7 @@ export const AdminView = () => {
                     <td className="px-3 py-3 text-slate-300">
                       {t.traspasos_detalle?.map((d: any, idx: number) => (
                         <span key={idx}>
-                          {d.variantes?.productos?.nombre} ({d.variantes?.color} • Talle {d.variantes?.talles_catalogo?.etiqueta})
+                          {d.variantes?.productos?.nombre} ({d.variantes?.color} · Talle {d.variantes?.talles_catalogo?.etiqueta})
                         </span>
                       ))}
                     </td>
@@ -771,6 +939,7 @@ export const AdminView = () => {
         </div>
       </div>
 
+      {/* Histórico Mensual */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
@@ -878,13 +1047,58 @@ export const AdminView = () => {
         </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-        <h2 className="text-base font-bold text-white flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5 text-sky-400" /> Personal y Control de Accesos
-        </h2>
-        <p className="text-xs text-slate-400">
-          Aprobá cuentas de empleados y reasigná su local de trabajo directamente desde aquí.
-        </p>
+      {/* Personal, Control de Accesos y Reglas de Seguridad */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          <div>
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-sky-400" /> Personal, Control de Accesos & Seguridad
+            </h2>
+            <p className="text-xs text-slate-400">
+              Aprobá cuentas de empleados, reasigná locales y definí el tope de descuento sin PIN.
+            </p>
+          </div>
+
+          <form
+            onSubmit={handleGuardarSeguridad}
+            className="flex flex-wrap items-end gap-2 bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs"
+          >
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                Tope Descuento Vendedor (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={maxDescuentoPct}
+                onChange={(e) => setMaxDescuentoPct(Number(e.target.value))}
+                className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1 flex items-center gap-1">
+                <KeyRound className="w-3 h-3 text-amber-400" /> PIN Autorización Admin
+              </label>
+              <input
+                type="text"
+                maxLength={8}
+                value={pinAdmin}
+                onChange={(e) => setPinAdmin(e.target.value)}
+                className="w-28 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono font-bold"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={guardandoSeguridad}
+              className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-black px-3.5 py-1.5 rounded-lg cursor-pointer transition-colors"
+            >
+              {guardandoSeguridad ? 'Guardando...' : 'Guardar Reglas'}
+            </button>
+          </form>
+        </div>
 
         <div className="overflow-x-auto border border-slate-800 rounded-lg">
           <table className="w-full text-left text-xs">
@@ -960,6 +1174,7 @@ export const AdminView = () => {
         </div>
       </div>
 
+      {/* Mapa de Calor */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
         <div className="flex justify-between items-center">
           <div className="space-y-0.5">
@@ -1020,6 +1235,7 @@ export const AdminView = () => {
         </div>
       </div>
 
+      {/* Matriz de Stock Global */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
@@ -1111,6 +1327,60 @@ export const AdminView = () => {
         </div>
       </div>
 
+      {/* Bitácora de Auditoría de Seguridad */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <History className="w-5 h-5 text-amber-400" />
+            Bitácora de Auditoría & Movimientos Sensibles
+          </h2>
+          <p className="text-xs text-slate-400">
+            Registro inalterable de anulaciones de tickets, ajustes de stock manuales, cambios de cobro y descuentos autorizados.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto border border-slate-800 rounded-lg max-h-80">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-950 text-slate-400 uppercase font-bold sticky top-0">
+              <tr>
+                <th className="px-4 py-3">Fecha & Hora</th>
+                <th className="px-3 py-3">Usuario</th>
+                <th className="px-3 py-3">Evento</th>
+                <th className="px-3 py-3">Detalle de Operación</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {logsAuditoria.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-6 text-slate-500">
+                    No se registran eventos de seguridad recientes.
+                  </td>
+                </tr>
+              ) : (
+                logsAuditoria.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-800/30">
+                    <td className="px-4 py-2.5 font-mono text-slate-400 whitespace-nowrap">
+                      {new Date(log.created_at).toLocaleDateString()}{' '}
+                      {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} hs
+                    </td>
+                    <td className="px-3 py-2.5 font-bold text-sky-400 whitespace-nowrap">
+                      {log.usuario_nombre}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-slate-950 border border-slate-700 text-amber-400">
+                        {log.accion.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-300">{log.detalle}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal Auditoría y Anulación de Ticket */}
       {ventaSeleccionada && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4">
@@ -1158,7 +1428,7 @@ export const AdminView = () => {
                     <div>
                       <p className="font-bold text-white">{d.variantes?.productos?.nombre}</p>
                       <p className="text-[11px] text-slate-400">
-                        {d.variantes?.color} • Talle {d.variantes?.talles_catalogo?.etiqueta} (×{d.cantidad})
+                        {d.variantes?.color} · Talle {d.variantes?.talles_catalogo?.etiqueta} (×{d.cantidad})
                       </p>
                     </div>
                     <span className="font-mono font-bold text-slate-200">
@@ -1228,15 +1498,29 @@ export const AdminView = () => {
               </div>
             </div>
 
-            <div className="flex justify-between items-center pt-2">
-              <a
-                href={`/ticket/${ventaSeleccionada.id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold"
-              >
-                <ExternalLink className="w-3.5 h-3.5" /> Abrir Comprobante Digital
-              </a>
+            <div className="flex flex-wrap justify-between items-center gap-2 pt-2">
+              <div className="flex items-center gap-3">
+                <a
+                  href={`/ticket/${ventaSeleccionada.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Ver Comprobante
+                </a>
+
+                {ventaSeleccionada.estado !== 'anulada' && (
+                  <button
+                    type="button"
+                    disabled={anulandoVenta}
+                    onClick={handleAnularVenta}
+                    className="text-xs bg-rose-500/10 hover:bg-rose-600 border border-rose-500/30 text-rose-400 hover:text-white px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Ban className="w-3.5 h-3.5" />
+                    {anulandoVenta ? 'Anulando...' : 'Anular Ticket'}
+                  </button>
+                )}
+              </div>
 
               <button
                 type="button"
