@@ -20,7 +20,9 @@ import {
   DollarSign,
   X,
   Send,
-  Lock
+  Lock,
+  FileCheck2,
+  Loader2
 } from 'lucide-react';
 
 interface CarritoItem {
@@ -53,6 +55,15 @@ export const PosView = () => {
   // Reglas de seguridad de descuentos de la empresa
   const [reglasDescuento, setReglasDescuento] = useState({ maxPct: 10, pinAdmin: '1234' });
 
+  // Estado de configuración fiscal ARCA de la empresa
+  const [arcaHabilitado, setArcaHabilitado] = useState(false);
+  const [arcaCondicionEmisor, setArcaCondicionEmisor] = useState<'monotributo' | 'responsable_inscripto' | 'exento'>('monotributo');
+  const [emitirFacturaArca, setEmitirFacturaArca] = useState(false);
+  const [receptorDocTipo, setReceptorDocTipo] = useState<99 | 96 | 80>(99);
+  const [receptorDocNro, setReceptorDocNro] = useState('');
+  const [receptorCondicionIva, setReceptorCondicionIva] = useState<'consumidor_final' | 'monotributo' | 'responsable_inscripto' | 'exento'>('consumidor_final');
+  const [procesandoCobro, setProcesandoCobro] = useState(false);
+
   const [carritos, setCarritos] = useState<CarritoPestaña[]>([
     { id: '1', nombre: 'Venta #1', items: [], descuentoTipo: 'ninguno', descuentoValor: 0 }
   ]);
@@ -83,6 +94,13 @@ export const PosView = () => {
     offline?: boolean;
     clienteNombre?: string;
     clienteTelefono?: string;
+    arcaInfo?: {
+      letra: string;
+      puntoVenta: number;
+      numero: number;
+      cae: string;
+    } | null;
+    arcaAdvertencia?: string | null;
   } | null>(null);
 
   const [telInputToast, setTelInputToast] = useState('');
@@ -95,8 +113,26 @@ export const PosView = () => {
     if (sucursalActiva && empresa?.id) {
       cargarCatalogoPOS();
       cargarReglasSeguridad();
+      cargarEstadoArca();
     }
   }, [sucursalActiva, empresa?.id]);
+
+  const cargarEstadoArca = async () => {
+    if (!empresa?.id) return;
+    const { data } = await supabase
+      .from('configuracion_fiscal_arca')
+      .select('activo, condicion_iva')
+      .eq('empresa_id', empresa.id)
+      .maybeSingle();
+
+    const estaActivo = Boolean(data?.activo);
+    setArcaHabilitado(estaActivo);
+    if (data?.condicion_iva) {
+      setArcaCondicionEmisor(data.condicion_iva);
+    }
+    const autoPorSucursal = Boolean((sucursalActiva as any)?.facturacion_arca_por_defecto);
+    setEmitirFacturaArca(estaActivo && autoPorSucursal);
+  };
 
   const cargarReglasSeguridad = async () => {
     if (!empresa?.id) return;
@@ -387,6 +423,18 @@ export const PosView = () => {
       return;
     }
 
+    if (emitirFacturaArca && arcaHabilitado) {
+      const docLimpio = receptorDocNro.replace(/\D/g, '');
+      if (receptorDocTipo === 96 && docLimpio.length < 7) {
+        setErrorCobro('Ingresá un número de DNI válido (7 u 8 dígitos).');
+        return;
+      }
+      if (receptorDocTipo === 80 && docLimpio.length !== 11) {
+        setErrorCobro('El CUIT del receptor debe tener 11 dígitos sin guiones.');
+        return;
+      }
+    }
+
     let detallesPagoJson: any = null;
     if (metodoPago === 'mixto') {
       detallesPagoJson = {
@@ -434,6 +482,8 @@ export const PosView = () => {
       limpiarFormularioVenta();
       return;
     }
+
+    setProcesandoCobro(true);
 
     try {
       let clienteId: string | null = null;
@@ -502,13 +552,45 @@ export const PosView = () => {
           .eq('sucursal_id', sucursalActiva.id);
       }
 
+      // Llamada al Fiscal Core (Edge Function ARCA) si se solicitó factura electrónica
+      let arcaInfo: { letra: string; puntoVenta: number; numero: number; cae: string } | null = null;
+      let arcaAdvertencia: string | null = null;
+
+      if (emitirFacturaArca && arcaHabilitado) {
+        const { data: fnData, error: fnError } = await supabase.functions.invoke('emitir-comprobante-arca', {
+          body: {
+            venta_id: ventaData.id,
+            empresa_id: empresa.id,
+            sucursal_id: sucursalActiva.id,
+            total_final: totalFinal,
+            receptor_doc_tipo: receptorDocTipo,
+            receptor_doc_nro: receptorDocTipo === 99 ? '0' : receptorDocNro.replace(/\D/g, ''),
+            receptor_nombre: clienteGuardadoNombre || 'Consumidor Final',
+            receptor_condicion_iva: receptorCondicionIva
+          }
+        });
+
+        if (fnError || !fnData?.ok) {
+          arcaAdvertencia = fnData?.error || fnError?.message || 'No se pudo obtener el CAE de ARCA. La venta quedó registrada como ticket interno.';
+        } else {
+          arcaInfo = {
+            letra: fnData.letra,
+            puntoVenta: fnData.punto_venta_arca,
+            numero: fnData.numero_comprobante_arca,
+            cae: fnData.cae
+          };
+        }
+      }
+
       setToastExito({
         mostrar: true,
         monto: totalFinal,
         ventaId: ventaData.id,
         offline: false,
         clienteNombre: clienteGuardadoNombre,
-        clienteTelefono: clienteGuardadoTelefono
+        clienteTelefono: clienteGuardadoTelefono,
+        arcaInfo,
+        arcaAdvertencia
       });
 
       setTelInputToast(clienteGuardadoTelefono);
@@ -516,6 +598,8 @@ export const PosView = () => {
       cargarCatalogoPOS();
     } catch (err: any) {
       setErrorCobro(err.message || 'Error procesando la venta');
+    } finally {
+      setProcesandoCobro(false);
     }
   };
 
@@ -528,6 +612,9 @@ export const PosView = () => {
     setMontoDigitalMixto('');
     setNombreCliente('');
     setTelefonoCliente('');
+    setReceptorDocTipo(99);
+    setReceptorDocNro('');
+    setReceptorCondicionIva('consumidor_final');
   };
 
   const enviarWhatsAppComprobante = (numeroDestino?: string) => {
@@ -571,13 +658,22 @@ export const PosView = () => {
               </div>
               <div>
                 <h4 className="font-black text-sm text-emerald-400">
-                  {toastExito.offline ? '¡Venta Registrada Offline!' : '¡Venta registrada con éxito!'}
+                  {toastExito.offline
+                    ? '¡Venta Registrada Offline!'
+                    : toastExito.arcaInfo
+                    ? `¡Factura ${toastExito.arcaInfo.letra} Emitida en ARCA!`
+                    : '¡Venta registrada con éxito!'}
                 </h4>
                 <p className="text-xs text-slate-300">
                   {toastExito.offline 
                     ? 'Guardada en memoria local. Se sincronizará al volver la red.' 
                     : `Cobrado: $${toastExito.monto.toLocaleString()}${toastExito.clienteNombre ? ` • ${toastExito.clienteNombre}` : ''}`}
                 </p>
+                {toastExito.arcaInfo && (
+                  <p className="text-[11px] font-mono text-sky-300 mt-1">
+                    Nº {String(toastExito.arcaInfo.puntoVenta).padStart(4, '0')}-{String(toastExito.arcaInfo.numero).padStart(8, '0')} · CAE: {toastExito.arcaInfo.cae}
+                  </p>
+                )}
               </div>
             </div>
             <button
@@ -588,8 +684,24 @@ export const PosView = () => {
             </button>
           </div>
 
+          {toastExito.arcaAdvertencia && (
+            <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] p-2.5 rounded-lg">
+              <strong>Atención ARCA:</strong> {toastExito.arcaAdvertencia}
+            </div>
+          )}
+
           {!toastExito.offline && toastExito.ventaId && (
-            <div className="pt-2 border-t border-slate-800">
+            <div className="pt-2 border-t border-slate-800 space-y-2">
+              <a
+                href={`/ticket/${toastExito.ventaId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                {toastExito.arcaInfo ? 'Abrir Factura Oficial con QR ARCA' : 'Ver Comprobante Digital'}
+              </a>
+
               {toastExito.clienteTelefono ? (
                 <button
                   onClick={() => enviarWhatsAppComprobante()}
@@ -1054,8 +1166,8 @@ export const PosView = () => {
       )}
 
       {mostrarModalCobro && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4 my-auto">
             <h3 className="text-lg font-black text-white uppercase tracking-wider">Finalizar Venta</h3>
             
             {errorCobro && (
@@ -1069,6 +1181,134 @@ export const PosView = () => {
               <p className="text-xs text-slate-400">Total a Cobrar:</p>
               <p className="text-2xl font-black text-emerald-400">${totalFinal.toLocaleString()}</p>
             </div>
+
+            {/* Selector Tipo de Comprobante (Ticket Interno vs Factura Fiscal ARCA) */}
+            {arcaHabilitado && (
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-3 text-xs">
+                <label className="block uppercase font-bold text-slate-400 text-[10px]">
+                  Tipo de Comprobante
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEmitirFacturaArca(false)}
+                    className={`py-2 px-3 rounded-lg border font-bold cursor-pointer transition-colors ${
+                      !emitirFacturaArca
+                        ? 'bg-slate-800 border-slate-600 text-white'
+                        : 'bg-slate-900 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    Ticket Interno
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEmitirFacturaArca(true)}
+                    className={`py-2 px-3 rounded-lg border font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                      emitirFacturaArca
+                        ? 'bg-sky-500 border-sky-400 text-slate-950'
+                        : 'bg-slate-900 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <FileCheck2 className="w-3.5 h-3.5" />
+                    Factura ARCA
+                  </button>
+                </div>
+
+                {emitirFacturaArca && (
+                  <div className="space-y-2.5 pt-2 border-t border-slate-800">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                        Identificación del Comprador
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReceptorDocTipo(99);
+                            setReceptorDocNro('');
+                            setReceptorCondicionIva('consumidor_final');
+                          }}
+                          className={`py-1.5 px-2 rounded border text-[11px] font-bold cursor-pointer ${
+                            receptorDocTipo === 99
+                              ? 'bg-sky-500/20 border-sky-500 text-sky-300'
+                              : 'bg-slate-900 border-slate-800 text-slate-400'
+                          }`}
+                        >
+                          Cons. Final
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReceptorDocTipo(96);
+                            setReceptorCondicionIva('consumidor_final');
+                          }}
+                          className={`py-1.5 px-2 rounded border text-[11px] font-bold cursor-pointer ${
+                            receptorDocTipo === 96
+                              ? 'bg-sky-500/20 border-sky-500 text-sky-300'
+                              : 'bg-slate-900 border-slate-800 text-slate-400'
+                          }`}
+                        >
+                          Con DNI
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReceptorDocTipo(80);
+                            setReceptorCondicionIva(
+                              arcaCondicionEmisor === 'responsable_inscripto'
+                                ? 'responsable_inscripto'
+                                : 'monotributo'
+                            );
+                          }}
+                          className={`py-1.5 px-2 rounded border text-[11px] font-bold cursor-pointer ${
+                            receptorDocTipo === 80
+                              ? 'bg-sky-500/20 border-sky-500 text-sky-300'
+                              : 'bg-slate-900 border-slate-800 text-slate-400'
+                          }`}
+                        >
+                          Con CUIT
+                        </button>
+                      </div>
+                    </div>
+
+                    {receptorDocTipo !== 99 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                            {receptorDocTipo === 96 ? 'Número de DNI' : 'CUIT (11 dígitos)'}
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={receptorDocTipo === 96 ? 8 : 11}
+                            placeholder={receptorDocTipo === 96 ? 'Ej. 40123456' : 'Ej. 20304050607'}
+                            value={receptorDocNro}
+                            onChange={(e) => setReceptorDocNro(e.target.value.replace(/\D/g, ''))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                          />
+                        </div>
+
+                        {receptorDocTipo === 80 && (
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                              Condición IVA Receptor
+                            </label>
+                            <select
+                              value={receptorCondicionIva}
+                              onChange={(e) => setReceptorCondicionIva(e.target.value as any)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white"
+                            >
+                              <option value="responsable_inscripto">Resp. Inscripto (Factura A)</option>
+                              <option value="monotributo">Monotributista</option>
+                              <option value="exento">Exento</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="block text-xs uppercase font-bold text-slate-400">Método de Pago</label>
@@ -1116,10 +1356,10 @@ export const PosView = () => {
             )}
 
             <div className="border-t border-slate-800 pt-3 space-y-2">
-              <label className="block text-xs uppercase font-bold text-slate-400">Cliente (Para WhatsApp)</label>
+              <label className="block text-xs uppercase font-bold text-slate-400">Cliente (Para WhatsApp / Factura)</label>
               <input
                 type="text"
-                placeholder="Nombre del cliente (opcional)"
+                placeholder="Nombre o Razón Social del cliente (opcional)"
                 value={nombreCliente}
                 onChange={(e) => setNombreCliente(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white mb-2"
@@ -1136,6 +1376,7 @@ export const PosView = () => {
             <div className="flex justify-end gap-2 pt-3">
               <button
                 type="button"
+                disabled={procesandoCobro}
                 onClick={() => setMostrarModalCobro(false)}
                 className="px-4 py-2 bg-slate-800 text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-700 cursor-pointer"
               >
@@ -1143,10 +1384,16 @@ export const PosView = () => {
               </button>
               <button
                 type="button"
+                disabled={procesandoCobro}
                 onClick={handleConfirmarVenta}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs cursor-pointer"
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 text-white font-bold rounded-lg text-xs cursor-pointer inline-flex items-center gap-2"
               >
-                Confirmar Cobro
+                {procesandoCobro && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {procesandoCobro
+                  ? 'Conectando con ARCA...'
+                  : emitirFacturaArca && arcaHabilitado
+                  ? 'Cobrar y Emitir Factura'
+                  : 'Confirmar Cobro'}
               </button>
             </div>
           </div>
@@ -1183,8 +1430,9 @@ export const PosView = () => {
                   <thead className="bg-slate-950 text-slate-400 uppercase font-bold sticky top-0">
                     <tr>
                       <th className="px-3 py-2.5">Hora</th>
+                      <th className="px-3 py-2.5">Comprobante</th>
                       <th className="px-3 py-2.5">Cliente</th>
-                      <th className="px-3 py-2.5">Método de Pago</th>
+                      <th className="px-3 py-2.5">Método</th>
                       <th className="px-3 py-2.5 text-right">Total</th>
                       <th className="px-3 py-2.5 text-center">Detalle</th>
                     </tr>
@@ -1192,7 +1440,7 @@ export const PosView = () => {
                   <tbody className="divide-y divide-slate-800">
                     {ventasTurno.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="text-center py-6 text-slate-500">
+                        <td colSpan={6} className="text-center py-6 text-slate-500">
                           Todavía no registraste ventas en este turno de caja.
                         </td>
                       </tr>
@@ -1201,6 +1449,15 @@ export const PosView = () => {
                         <tr key={v.id} className="hover:bg-slate-800/40">
                           <td className="px-3 py-2.5 font-mono text-slate-300">
                             {new Date(v.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} hs
+                          </td>
+                          <td className="px-3 py-2.5">
+                            {v.es_fiscal && v.cae ? (
+                              <span className="px-2 py-0.5 rounded bg-sky-500/10 border border-sky-500/30 text-sky-400 font-bold text-[10px]">
+                                Factura {v.letra_comprobante}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 text-[11px]">Interno</span>
+                            )}
                           </td>
                           <td className="px-3 py-2.5 text-slate-300">
                             {v.clientes?.nombre || 'Consumidor Final'}
