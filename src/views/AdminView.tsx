@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { registrarAuditoria } from '../lib/auditoria';
+import { ConfiguracionArcaCard } from '../components/ConfiguracionArcaCard';
 import type { Sucursal } from '../types/database';
 import { 
   BarChart3, 
@@ -525,6 +526,8 @@ export const AdminView = () => {
 
     return true;
   });
+
+  const empresaIdActual = empresa?.id || perfil?.empresa_id;
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
@@ -1173,6 +1176,17 @@ export const AdminView = () => {
           </table>
         </div>
       </div>
+
+      {/* Configuración Fiscal ARCA (ex-AFIP) */}
+      {empresaIdActual && (
+        <ConfiguracionArcaCard
+          empresaId={empresaIdActual}
+          usuarioId={perfil?.id}
+          usuarioNombre={`${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim()}
+          sucursales={sucursales}
+          onActualizarSucursales={cargarDatosAdmin}
+        />
+      )}
 
       {/* Mapa de Calor */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
