@@ -18,7 +18,8 @@ import {
   Menu,
   X,
   CheckSquare,
-  Calendar
+  Calendar,
+  Sparkles
 } from 'lucide-react';
 
 export const Navbar = () => {
@@ -208,6 +209,22 @@ export const Navbar = () => {
               >
                 <Calendar className="w-3.5 h-3.5" />
                 Calendario
+              </NavLink>
+            )}
+
+            {esAdmin && (empresa as any)?.modulo_campaign_studio !== false && (
+              <NavLink
+                to="/travis"
+                className={({ isActive }) =>
+                  `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
+                    isActive
+                      ? 'bg-sky-500/15 text-sky-400 font-bold border border-sky-500/30'
+                      : 'text-slate-300 hover:text-sky-300 hover:bg-slate-900'
+                  }`
+                }
+              >
+                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                TRAVIS
               </NavLink>
             )}
 
@@ -437,6 +454,23 @@ export const Navbar = () => {
                   >
                     <Calendar className="w-4 h-4" />
                     Calendario
+                  </NavLink>
+                )}
+
+                {esAdmin && (empresa as any)?.modulo_campaign_studio !== false && (
+                  <NavLink
+                    to="/travis"
+                    onClick={cerrarMenu}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        isActive
+                          ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
+                          : 'text-sky-400 bg-sky-500/10 border border-sky-500/20'
+                      }`
+                    }
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    TRAVIS (IA)
                   </NavLink>
                 )}
 

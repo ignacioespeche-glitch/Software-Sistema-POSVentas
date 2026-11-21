@@ -20,6 +20,7 @@ import { CalendarioView } from './views/CalendarioView';
 import { SuperAdminView } from './views/SuperAdminView';
 import { LandingView } from './views/LandingView';
 import { LegalesView } from './views/LegalesView';
+import { TravisStudioView } from './views/TravisStudioView';
 
 const RutaProtegida = ({ children, soloAdmin = false }: { children: React.ReactNode; soloAdmin?: boolean }) => {
   const { perfil, loading } = useAuth();
@@ -184,6 +185,14 @@ const ContenedorPrincipal = () => {
             element={
               <RutaProtegida>
                 <CalendarioView />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="/travis"
+            element={
+              <RutaProtegida soloAdmin={true}>
+                <TravisStudioView />
               </RutaProtegida>
             }
           />
