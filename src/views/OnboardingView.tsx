@@ -45,6 +45,7 @@ const RUBROS = [
 const OBJETIVOS_LISTA = [
   { id: 'ventas', label: 'Organizar mis ventas y punto de venta rápido', icon: TrendingUp, default: true },
   { id: 'stock', label: 'Controlar mi stock con curvas de talles y colores', icon: Boxes, default: true },
+  { id: 'gemi_ai', label: 'GEMI AI: campañas, promos y flyers automáticos con margen protegido', icon: Sparkles, default: true },
   { id: 'caja_ciega', label: 'Delegar tareas a empleados y arqueo ciego de caja', icon: Users, default: true },
   { id: 'senas_cambios', label: 'Controlar señas, reservas y cambios de prendas', icon: Layers, default: true },
   { id: 'tareas_comunicacion', label: 'Coordinar tareas internas y novedades de equipo', icon: CheckSquare, default: true },
@@ -63,6 +64,7 @@ export const OnboardingView = () => {
   const [objetivos, setObjetivos] = useState<string[]>([
     'ventas',
     'stock',
+    'gemi_ai',
     'caja_ciega',
     'senas_cambios',
     'tareas_comunicacion',
@@ -144,6 +146,7 @@ export const OnboardingView = () => {
           modulo_comunicacion: objetivos.includes('tareas_comunicacion'),
           modulo_calendario: objetivos.includes('calendario_vencimientos'),
           modulo_finanzas_gastos: objetivos.includes('gastos_proveedores'),
+          modulo_campaign_studio: objetivos.includes('gemi_ai'),
           activa: true
         })
         .select('id')
@@ -189,7 +192,7 @@ export const OnboardingView = () => {
           .eq('id', userId);
       }
 
-      // 6. Redirigir al inicio del POS
+      // 6. Redirigir al inicio de GEMI
       navigate('/');
       window.location.reload();
     } catch (err: any) {
@@ -202,18 +205,26 @@ export const OnboardingView = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between p-4 sm:p-8">
       <div className="max-w-3xl w-full mx-auto space-y-8 my-auto">
-        {/* Barra de Progreso */}
-        <div className="flex items-center justify-between text-xs font-mono text-slate-500 border-b border-slate-800 pb-3">
-          <span>PASO {paso} DE 4</span>
-          <div className="flex gap-1.5">
-            {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className={`w-8 h-1.5 rounded-full transition-all ${
-                  i <= paso ? 'bg-sky-400' : 'bg-slate-800'
-                }`}
-              />
-            ))}
+        {/* Cabecera GEMI + Barra de Progreso */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="font-black tracking-widest text-sm text-white">GEMI</span>
+            <span className="text-[11px] text-sky-400 font-semibold hidden sm:inline">
+              Acompañamiento 1 a 1 único desde el primer día
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs font-mono text-slate-500 border-b border-slate-800 pb-3">
+            <span>PASO {paso} DE 4</span>
+            <div className="flex gap-1.5">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className={`w-8 h-1.5 rounded-full transition-all ${
+                    i <= paso ? 'bg-sky-400' : 'bg-slate-800'
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
@@ -231,7 +242,7 @@ export const OnboardingView = () => {
                 ¿Qué tipo de negocio es?
               </h1>
               <p className="text-slate-400 text-sm mt-1">
-                Esto nos ayuda a configurar funciones específicas para tu rubro.
+                Esto nos ayuda a configurar GEMI y tu inteligencia artificial personalizada para tu rubro.
               </p>
             </div>
 
@@ -280,7 +291,7 @@ export const OnboardingView = () => {
                 ¿Cuáles son tus objetivos?
               </h1>
               <p className="text-slate-400 text-sm mt-1">
-                Seleccioná todas las funciones que quieras habilitar en tu panel.
+                Seleccioná todas las funciones que quieras habilitar en tu espacio GEMI.
               </p>
             </div>
 
@@ -457,7 +468,7 @@ export const OnboardingView = () => {
                 Tu Marca y Acceso
               </h1>
               <p className="text-slate-400 text-sm mt-1">
-                Completá los datos con los que vas a ingresar al sistema todos los días.
+                Completá los datos con los que vas a ingresar a GEMI todos los días.
               </p>
             </div>
 
@@ -535,7 +546,7 @@ export const OnboardingView = () => {
                 disabled={loading}
                 className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-black px-7 py-3 rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-colors shadow-lg shadow-emerald-900/30"
               >
-                {loading ? 'Creando Tienda...' : 'Comenzar a Usar el Software'}
+                {loading ? 'Creando Tienda...' : 'Comenzar a Usar GEMI'}
               </button>
             </div>
           </form>

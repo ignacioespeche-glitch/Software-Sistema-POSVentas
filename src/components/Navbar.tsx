@@ -54,7 +54,7 @@ export const Navbar = () => {
 
   const esAdmin = perfil?.rol === 'admin';
   const cerrarMenu = () => setMenuMovilAbierto(false);
-  const nombreMarca = empresa?.nombre?.toUpperCase() || 'SISTEMA POS';
+  const nombreMarca = empresa?.nombre?.toUpperCase() || 'GEMI POS';
 
   return (
     <>
@@ -214,7 +214,7 @@ export const Navbar = () => {
 
             {esAdmin && (empresa as any)?.modulo_campaign_studio !== false && (
               <NavLink
-                to="/travis"
+                to="/gemi-ai"
                 className={({ isActive }) =>
                   `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
                     isActive
@@ -224,7 +224,7 @@ export const Navbar = () => {
                 }
               >
                 <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                TRAVIS
+                GEMI AI
               </NavLink>
             )}
 
@@ -459,7 +459,7 @@ export const Navbar = () => {
 
                 {esAdmin && (empresa as any)?.modulo_campaign_studio !== false && (
                   <NavLink
-                    to="/travis"
+                    to="/gemi-ai"
                     onClick={cerrarMenu}
                     className={({ isActive }) =>
                       `flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
@@ -470,7 +470,7 @@ export const Navbar = () => {
                     }
                   >
                     <Sparkles className="w-4 h-4" />
-                    TRAVIS (IA)
+                    GEMI AI
                   </NavLink>
                 )}
 

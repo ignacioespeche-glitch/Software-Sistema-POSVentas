@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { Sucursal } from '../types/database';
 import { Lock, Mail, User, Store, ArrowRight, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
@@ -140,46 +140,50 @@ export const LoginView = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4">
+    <div className="min-h-screen bg-[#121212] flex flex-col justify-center items-center p-4 selection:bg-[#FF4500] selection:text-white">
       {/* Banner / CTA destacado para nuevos dueños de tiendas */}
       <div className="mb-6 max-w-md w-full">
         <button
           type="button"
           onClick={() => navigate('/onboarding')}
-          className="w-full bg-gradient-to-r from-sky-500/10 via-sky-500/20 to-emerald-500/10 border border-sky-500/30 hover:border-sky-400 p-3.5 rounded-2xl flex items-center justify-between text-left transition-all hover:scale-[1.01] group cursor-pointer shadow-lg"
+          className="w-full bg-gradient-to-r from-[#FF4500]/15 via-[#FF4500]/20 to-amber-500/10 border border-[#FF4500]/40 hover:border-[#FF4500] p-3.5 rounded-2xl flex items-center justify-between text-left transition-all hover:scale-[1.01] group cursor-pointer shadow-lg"
         >
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-sky-500/20 rounded-xl text-sky-400 group-hover:bg-sky-500 group-hover:text-slate-950 transition-colors">
+            <div className="p-2 bg-[#FF4500]/20 rounded-xl text-[#FF4500] group-hover:bg-[#FF4500] group-hover:text-white transition-colors">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
               <p className="text-xs font-black text-white uppercase tracking-wider">
-                ¿Querés usar el software en tu tienda?
+                ¿Querés usar GEMI en tu negocio?
               </p>
-              <p className="text-[11px] text-slate-400">
-                Configurá tu marca, sucursales y objetivos en 1 minuto
+              <p className="text-[11px] text-zinc-400">
+                Configurá tu marca, sucursales y GEMI AI en 1 minuto
               </p>
             </div>
           </div>
-          <ArrowRight className="w-4 h-4 text-sky-400 group-hover:translate-x-1 transition-transform" />
+          <ArrowRight className="w-4 h-4 text-[#FF4500] group-hover:translate-x-1 transition-transform" />
         </button>
       </div>
 
-      <div className="mb-6 text-center">
-        <h1 className="text-3xl font-black tracking-widest uppercase text-white">
-          SISTEMA POS
-        </h1>
-        <p className="text-xs text-sky-400 font-semibold tracking-wider uppercase mt-1">
-          Plataforma de Mostrador, Stock & Gestión de Tiendas
+      <div className="mb-6 text-center max-w-md flex flex-col items-center">
+        <Link to="/">
+          <img
+            src="/logo-gemi.jpeg"
+            alt="GEMI Software"
+            className="h-14 w-auto rounded-xl mb-2.5 shadow-lg"
+          />
+        </Link>
+        <p className="text-xs text-zinc-300 font-medium leading-relaxed">
+          Toda la gestión de tu negocio en un mismo lugar. Tu inteligencia artificial personalizada y un acompañamiento 1 a 1 único.
         </p>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-6">
-        <div className="border-b border-slate-800 pb-4 text-center">
+      <div className="bg-[#1E1E1E] border border-zinc-800 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-6">
+        <div className="border-b border-zinc-800 pb-4 text-center">
           <h2 className="text-lg font-bold text-white">
-            {esRegistro ? 'Registro de Personal' : 'Iniciar Sesión'}
+            {esRegistro ? 'Registro de Personal' : 'Iniciar Sesión en GEMI'}
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-zinc-400 mt-1">
             {esRegistro
               ? 'Completá tus datos reales para solicitar acceso a un local existente'
               : 'Ingresá con tu cuenta autorizada'}
@@ -208,40 +212,40 @@ export const LoginView = () => {
             <>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs uppercase font-bold text-slate-400 mb-1">Nombre</label>
+                  <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Nombre</label>
                   <div className="relative">
-                    <User className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-500" />
+                    <User className="w-3.5 h-3.5 absolute left-3 top-3 text-zinc-500" />
                     <input
                       type="text"
                       required
                       placeholder="Ej. Lucas"
                       value={nombre}
                       onChange={(e) => setNombre(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                      className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs uppercase font-bold text-slate-400 mb-1">Apellido</label>
+                  <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Apellido</label>
                   <input
                     type="text"
                     required
                     placeholder="Ej. Gómez"
                     value={apellido}
                     onChange={(e) => setApellido(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                    className="w-full bg-[#121212] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs uppercase font-bold text-slate-400 mb-1">Rol</label>
+                  <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Rol</label>
                   <select
                     value={rol}
                     onChange={(e) => setRol(e.target.value as any)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white capitalize focus:outline-none"
+                    className="w-full bg-[#121212] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white capitalize focus:outline-none focus:border-[#FF4500]"
                   >
                     <option value="vendedor">Vendedor</option>
                     <option value="admin">Administrador</option>
@@ -250,13 +254,13 @@ export const LoginView = () => {
 
                 {rol === 'vendedor' && (
                   <div>
-                    <label className="block text-xs uppercase font-bold text-slate-400 mb-1">Sucursal</label>
+                    <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Sucursal</label>
                     <div className="relative">
-                      <Store className="w-3.5 h-3.5 absolute left-2.5 top-3 text-slate-500" />
+                      <Store className="w-3.5 h-3.5 absolute left-2.5 top-3 text-zinc-500" />
                       <select
                         value={sucursalId}
                         onChange={(e) => setSucursalId(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-2 py-2 text-xs text-white focus:outline-none"
+                        className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-8 pr-2 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
                       >
                         {sucursales.map((s) => (
                           <option key={s.id} value={s.id}>{s.nombre}</option>
@@ -270,31 +274,31 @@ export const LoginView = () => {
           )}
 
           <div>
-            <label className="block text-xs uppercase font-bold text-slate-400 mb-1">Email Real / Verídico</label>
+            <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Email Real / Verídico</label>
             <div className="relative">
-              <Mail className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+              <Mail className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
               <input
                 type="email"
                 required
                 placeholder="tu.correo@gmail.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs uppercase font-bold text-slate-400 mb-1">Contraseña</label>
+            <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Contraseña</label>
             <div className="relative">
-              <Lock className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+              <Lock className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
               <input
                 type="password"
                 required
                 placeholder="Mínimo 8 caracteres"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
               />
             </div>
           </div>
@@ -302,21 +306,21 @@ export const LoginView = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 text-slate-950 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2"
+            className="w-full bg-[#FF4500] hover:bg-[#ff571a] disabled:bg-zinc-800 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF4500]/20"
           >
-            {loading ? 'Procesando...' : esRegistro ? 'Registrarme' : 'Ingresar al Mostrador'}
+            {loading ? 'Procesando...' : esRegistro ? 'Registrarme en GEMI' : 'Ingresar a GEMI'}
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
-        <div className="pt-2 text-center border-t border-slate-800">
+        <div className="pt-2 text-center border-t border-zinc-800">
           <button
             type="button"
             onClick={() => {
               setEsRegistro(!esRegistro);
               setMensaje(null);
             }}
-            className="text-xs text-slate-400 hover:text-sky-400 font-medium cursor-pointer transition-colors"
+            className="text-xs text-zinc-400 hover:text-[#FF4500] font-medium cursor-pointer transition-colors"
           >
             {esRegistro ? '¿Ya tenés cuenta? Iniciar Sesión' : '¿Empleado de local existente? Solicitar acceso'}
           </button>

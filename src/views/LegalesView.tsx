@@ -14,8 +14,8 @@ export const LegalesView = ({ tipo }: { tipo: 'terminos' | 'privacidad' }) => {
           >
             <ArrowLeft className="w-4 h-4" /> Volver al inicio
           </Link>
-          <div className="flex items-center gap-1.5 text-xs font-black text-white">
-            <ShieldCheck className="w-4 h-4 text-sky-400" /> G.E.M.I.
+          <div className="flex items-center gap-1.5 text-xs font-black tracking-widest text-white">
+            <ShieldCheck className="w-4 h-4 text-sky-400" /> GEMI
           </div>
         </div>
 
@@ -27,28 +27,28 @@ export const LegalesView = ({ tipo }: { tipo: 'terminos' | 'privacidad' }) => {
           {esTerminos ? (
             <>
               <p>
-                <strong>1. Objeto del Servicio:</strong> G.E.M.I. provee una plataforma de software como servicio (SaaS) en la nube destinada a la gestión comercial, control de inventario, punto de venta y administración multisucursal para comercios.
+                <strong>1. Objeto del Servicio:</strong> GEMI provee una plataforma de software como servicio (SaaS) en la nube destinada a la gestión comercial integral, control de inventario, punto de venta, administración multisucursal e inteligencia artificial comercial (GEMI AI) para comercios.
               </p>
               <p>
                 <strong>2. Cuentas y Responsabilidad:</strong> Cada comercio titular es responsable de la confidencialidad de sus credenciales de administrador, la asignación de permisos a sus empleados y la veracidad de los precios y productos cargados en su catálogo.
               </p>
               <p>
-                <strong>3. Suscripción y Renovación:</strong> Tras el período de prueba inicial, el uso continuo del sistema requiere el abono del plan mensual vigente. En caso de falta de pago vencido, el acceso operativo podrá suspenderse temporalmente hasta regularizar el abono, conservando intactos los datos históricos del comercio.
+                <strong>3. Suscripción y Acompañamiento:</strong> Tras el período de prueba inicial, el uso continuo del sistema requiere el abono del plan mensual vigente, el cual incluye soporte técnico y acompañamiento personalizado 1 a 1. En caso de falta de pago vencido, el acceso operativo podrá suspenderse temporalmente hasta regularizar el abono, conservando intactos los datos históricos del comercio.
               </p>
               <p>
-                <strong>4. Disponibilidad:</strong> G.E.M.I. realiza copias de seguridad periódicas y cuenta con almacenamiento local temporal (modo offline) para garantizar la continuidad operativa ante cortes de conectividad del local.
+                <strong>4. Disponibilidad:</strong> GEMI realiza copias de seguridad periódicas y cuenta con almacenamiento local temporal (modo offline) para garantizar la continuidad operativa ante cortes de conectividad del local.
               </p>
             </>
           ) : (
             <>
               <p>
-                <strong>1. Propiedad de los Datos:</strong> Toda la información comercial, catálogos, movimientos de caja, ventas y registros de clientes cargados en G.E.M.I. pertenecen exclusivamente a la empresa titular de la cuenta.
+                <strong>1. Propiedad de los Datos:</strong> Toda la información comercial, catálogos, movimientos de caja, ventas, activos visuales y registros de clientes cargados en GEMI y GEMI AI pertenecen exclusivamente a la empresa titular de la cuenta.
               </p>
               <p>
-                <strong>2. Aislamiento Multi-Empresa:</strong> Nuestra arquitectura implementa aislamiento estricto a nivel de base de datos (Row Level Security), garantizando que ningún comercio pueda acceder ni visualizar información de otras tiendas registradas en la plataforma.
+                <strong>2. Aislamiento Multi-Empresa:</strong> Nuestra arquitectura implementa aislamiento estricto a nivel de base de datos (Row Level Security) y almacenamiento privado por comercio, garantizando que ningún local pueda acceder ni visualizar información de otras tiendas registradas en la plataforma.
               </p>
               <p>
-                <strong>3. Uso de la Información:</strong> Los datos de contacto del titular se utilizan únicamente para soporte técnico, notificaciones de servicio y gestión de facturación del abono mensual. G.E.M.I. no vende ni cede bases de datos a terceros.
+                <strong>3. Uso de la Información:</strong> Los datos de contacto del titular se utilizan únicamente para brindar acompañamiento 1 a 1, soporte técnico, notificaciones de servicio y gestión de facturación del abono mensual. GEMI no vende ni cede bases de datos a terceros.
               </p>
             </>
           )}

@@ -299,6 +299,10 @@ export const TicketPublicoView = () => {
           <Printer className="w-4 h-4" /> Imprimir / Guardar PDF
         </button>
 
+        <p className="text-center text-[10px] text-slate-500 pt-1">
+          Comprobante generado con <span className="font-bold text-slate-400">GEMI</span>
+        </p>
+
       </div>
     </div>
   );

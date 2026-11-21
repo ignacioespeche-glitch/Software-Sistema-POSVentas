@@ -68,7 +68,7 @@ const InicioInteligente = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
-        Cargando G.E.M.I...
+        Cargando GEMI...
       </div>
     );
   }
@@ -97,7 +97,7 @@ const ContenedorPrincipal = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
-        Cargando sistema...
+        Cargando GEMI...
       </div>
     );
   }
@@ -189,13 +189,14 @@ const ContenedorPrincipal = () => {
             }
           />
           <Route
-            path="/travis"
+            path="/gemi-ai"
             element={
               <RutaProtegida soloAdmin={true}>
                 <TravisStudioView />
               </RutaProtegida>
             }
           />
+          <Route path="/travis" element={<Navigate to="/gemi-ai" replace />} />
           <Route
             path="/admin"
             element={

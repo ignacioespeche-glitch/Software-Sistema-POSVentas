@@ -73,7 +73,7 @@ export const TravisStudioView = () => {
       setCampanas(camps);
       setBrandKit(kit);
     } catch (err) {
-      console.error('Error cargando TRAVIS:', err);
+      console.error('Error cargando GEMI AI:', err);
     } finally {
       setCargando(false);
     }
@@ -105,7 +105,7 @@ export const TravisStudioView = () => {
       await cargarTodo();
       await abrirCampanaEnStudio(res.campaign_id);
     } catch (err: any) {
-      alert('Error al generar campaña con TRAVIS: ' + err.message);
+      alert('Error al generar campaña con GEMI AI: ' + err.message);
     } finally {
       setGenerandoIA(false);
     }
@@ -317,7 +317,7 @@ export const TravisStudioView = () => {
   const descargarPiezaPNG = () => {
     if (!canvasRef.current) return;
     const link = document.createElement('a');
-    link.download = `TRAVIS-${detalle?.campana?.nombre || 'pieza'}-${formatoPieza.replace(':', 'x')}.png`;
+    link.download = `GEMI-AI-${detalle?.campana?.nombre || 'pieza'}-${formatoPieza.replace(':', 'x')}.png`;
     link.href = canvasRef.current.toDataURL('image/png');
     link.click();
   };
@@ -342,7 +342,7 @@ export const TravisStudioView = () => {
           <Loader2 className="w-7 h-7 text-sky-400 animate-spin" />
         </div>
         <div>
-          <h2 className="text-lg font-black text-white">TRAVIS está armando tu campaña...</h2>
+          <h2 className="text-lg font-black text-white">GEMI AI está armando tu campaña...</h2>
           <p className="text-xs text-slate-400 max-w-md mt-1">
             Analizando costos y márgenes reales, redactando textos para redes y preparando tu plan de ejecución.
           </p>
@@ -368,11 +368,11 @@ export const TravisStudioView = () => {
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-sky-400" />
               <h1 className="text-lg md:text-xl font-black tracking-tight text-white">
-                TRAVIS <span className="text-slate-500 font-semibold">| AI Campaign Studio</span>
+                GEMI AI <span className="text-slate-500 font-semibold">| Campaign Studio</span>
               </h1>
             </div>
             <p className="text-xs text-slate-400">
-              Inteligencia comercial conectada a tu stock, costos y márgenes reales.
+              Tu inteligencia artificial personalizada conectada a tu stock, costos y márgenes reales.
             </p>
           </div>
         </div>
@@ -607,7 +607,7 @@ export const TravisStudioView = () => {
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black transition-colors cursor-pointer"
           >
             <Sparkles className="w-4 h-4" />
-            Generar Estrategia, Textos y Piezas con TRAVIS
+            Generar Estrategia, Textos y Piezas con GEMI AI
           </button>
         </form>
       )}
@@ -912,7 +912,7 @@ export const TravisStudioView = () => {
                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm transition-colors cursor-pointer"
               >
                 <Rocket className="w-4 h-4" />
-                Aprobar y Activar Campaña en G.E.M.I.
+                Aprobar y Activar Campaña en GEMI
               </button>
             </div>
           )}

@@ -29,7 +29,7 @@ export const BrandKitModal = ({
     logo_principal_url: logoEmpresaUrl || null,
     color_primario: '#0F172A',
     color_secundario: '#F8FAFC',
-    color_acento: '#0EA5E9',
+    color_acento: '#10B981',
     tipografia_titulos: 'Inter',
     tipografia_cuerpo: 'Inter',
     tono_comunicacion: 'Urbano, directo y comercial',
@@ -97,10 +97,10 @@ export const BrandKitModal = ({
       <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
           <div className="flex items-center gap-2">
-            <Palette className="w-5 h-5 text-sky-400" />
+            <Palette className="w-5 h-5 text-emerald-400" />
             <div>
               <h2 className="font-bold text-white text-sm">Brand Kit & Reglas Comerciales</h2>
-              <p className="text-[11px] text-slate-400">Identidad visual y piso de margen para TRAVIS</p>
+              <p className="text-[11px] text-slate-400">Identidad visual y piso de margen para GEMI AI</p>
             </div>
           </div>
           <button
@@ -115,7 +115,6 @@ export const BrandKitModal = ({
           <div className="p-10 text-center text-xs text-slate-400">Cargando configuración de marca...</div>
         ) : (
           <form onSubmit={handleGuardar} className="p-5 space-y-5 text-xs">
-            {/* Identidad y Logo */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-slate-400 font-semibold mb-1.5">Nombre de la Marca</label>
@@ -124,7 +123,7 @@ export const BrandKitModal = ({
                   required
                   value={form.nombre_marca}
                   onChange={(e) => setForm({ ...form, nombre_marca: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-sky-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
                 />
               </div>
 
@@ -143,7 +142,7 @@ export const BrandKitModal = ({
                     </div>
                   )}
                   <label className="flex-1 flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2 px-3 rounded-xl cursor-pointer transition-colors">
-                    <Upload className="w-3.5 h-3.5 text-sky-400" />
+                    <Upload className="w-3.5 h-3.5 text-emerald-400" />
                     <span>{subiendoLogo ? 'Subiendo...' : 'Subir PNG/SVG'}</span>
                     <input type="file" accept="image/*" onChange={handleSubirLogo} className="hidden" />
                   </label>
@@ -151,7 +150,6 @@ export const BrandKitModal = ({
               </div>
             </div>
 
-            {/* Paleta de Colores */}
             <div>
               <label className="block text-slate-400 font-semibold mb-2">Paleta de Colores para Piezas</label>
               <div className="grid grid-cols-3 gap-3">
@@ -196,7 +194,6 @@ export const BrandKitModal = ({
               </div>
             </div>
 
-            {/* Regla de Margen Mínimo */}
             <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3.5">
               <div className="flex items-center justify-between mb-1">
                 <span className="flex items-center gap-1.5 font-bold text-emerald-400">
@@ -206,7 +203,7 @@ export const BrandKitModal = ({
                 <span className="font-mono font-black text-sm text-emerald-300">{form.margen_minimo_pct}%</span>
               </div>
               <p className="text-[11px] text-slate-400 mb-2">
-                TRAVIS bloqueará o advertirá cualquier descuento que deje la ganancia bruta por debajo de este porcentaje.
+                GEMI AI bloqueará o advertirá cualquier descuento que deje la ganancia bruta por debajo de este porcentaje.
               </p>
               <input
                 type="range"
@@ -219,11 +216,10 @@ export const BrandKitModal = ({
               />
             </div>
 
-            {/* Tono y Estilo */}
             <div className="space-y-3">
               <div>
                 <label className="flex items-center gap-1 text-slate-400 font-semibold mb-1">
-                  <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
                   Tono de Comunicación
                 </label>
                 <input
@@ -231,7 +227,7 @@ export const BrandKitModal = ({
                   value={form.tono_comunicacion}
                   onChange={(e) => setForm({ ...form, tono_comunicacion: e.target.value })}
                   placeholder="Ej: Streetwear mendocino, cercano, exclusivo, sin vueltas"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-sky-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
                 />
               </div>
 
@@ -242,7 +238,7 @@ export const BrandKitModal = ({
                   value={form.estilo_fotografico}
                   onChange={(e) => setForm({ ...form, estilo_fotografico: e.target.value })}
                   placeholder="Ej: Fondo hormigón oscuro, luz dramática, lookbook urbano"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-sky-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -258,7 +254,7 @@ export const BrandKitModal = ({
               <button
                 type="submit"
                 disabled={guardando}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold transition-colors cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-colors cursor-pointer disabled:opacity-50"
               >
                 <Save className="w-3.5 h-3.5" />
                 {guardando ? 'Guardando...' : 'Guardar Brand Kit'}
