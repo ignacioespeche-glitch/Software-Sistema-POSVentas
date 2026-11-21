@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+@theme {
+  /* Fondos carbón oficiales del logo GEMI */
+  --color-slate-950: #121212;
+  --color-slate-900: #1E1E1E;
+  --color-slate-800: #2A2A2A;
+  --color-slate-700: #3A3A3A;
+
+  /* Acento principal naranja bermellón del logo GEMI */
+  --color-sky-600: #D93800;
+  --color-sky-500: #FF4500;
+  --color-sky-400: #FF571A;
+  --color-sky-300: #FF7847;
+}
