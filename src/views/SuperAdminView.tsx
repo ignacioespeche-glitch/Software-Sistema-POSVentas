@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+import { ConfiguracionArcaCard } from '../components/ConfiguracionArcaCard';
+import type { Sucursal } from '../types/database';
 import {
   ShieldCheck,
   Search,
@@ -20,7 +23,9 @@ import {
   Building2,
   Store,
   Trash2,
-  RotateCcw
+  RotateCcw,
+  FileText,
+  X
 } from 'lucide-react';
 
 // Lista centralizada de módulos: agregando uno acá aparece automáticamente en todos los clientes
@@ -79,6 +84,7 @@ interface InteresadoAnuncio {
 }
 
 export const SuperAdminView = () => {
+  const { perfil } = useAuth();
   const [empresas, setEmpresas] = useState<EmpresaMetricas[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorAcceso, setErrorAcceso] = useState<string | null>(null);
@@ -90,6 +96,11 @@ export const SuperAdminView = () => {
   // Modal de edición rápida de cliente
   const [editando, setEditando] = useState<EmpresaMetricas | null>(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
+  // Modal exclusivo de Configuración ARCA por empresa (para servicio pago)
+  const [empresaArcaSeleccionada, setEmpresaArcaSeleccionada] = useState<EmpresaMetricas | null>(null);
+  const [sucursalesEmpresaArca, setSucursalesEmpresaArca] = useState<Sucursal[]>([]);
+  const [cargandoSucsArca, setCargandoSucsArca] = useState(false);
 
   // Anuncio global
   const [mensajeAnuncio, setMensajeAnuncio] = useState('');
@@ -142,6 +153,18 @@ export const SuperAdminView = () => {
   useEffect(() => {
     cargarTodo();
   }, []);
+
+  const abrirConfiguracionArcaCliente = async (emp: EmpresaMetricas) => {
+    setEmpresaArcaSeleccionada(emp);
+    setCargandoSucsArca(true);
+    const { data } = await supabase
+      .from('sucursales')
+      .select('*')
+      .eq('empresa_id', emp.empresa_id)
+      .order('nombre');
+    setSucursalesEmpresaArca((data as Sucursal[]) || []);
+    setCargandoSucsArca(false);
+  };
 
   const calcularDiasRestantes = (fechaVenc: string | null) => {
     if (!fechaVenc) return 30;
@@ -399,7 +422,7 @@ export const SuperAdminView = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
-        Cargando G.E.M.I. Torre de Control...
+        Cargando GEMI · Torre de Control...
       </div>
     );
   }
@@ -423,11 +446,11 @@ export const SuperAdminView = () => {
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-sky-400" />
             <h1 className="text-xl md:text-2xl font-black tracking-tight text-white">
-              G.E.M.I. · TORRE DE CONTROL
+              GEMI · TORRE DE CONTROL
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Gestión de clientes SaaS, semáforo de cobros y seguimiento de Customer Success.
+            Gestión de clientes SaaS, configuración fiscal ARCA y seguimiento de acompañamiento 1 a 1.
           </p>
         </div>
 
@@ -438,7 +461,7 @@ export const SuperAdminView = () => {
               tabActiva === 'clientes' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Cartera & Semáforos
+            Cartera & ARCA
           </button>
           <button
             onClick={() => setTabActiva('mejoras')}
@@ -650,7 +673,7 @@ export const SuperAdminView = () => {
                     {emp.telefono_contacto && (
                       <a
                         href={`https://wa.me/${emp.telefono_contacto.replace(/\D/g, '')}?text=${encodeURIComponent(
-                          `Hola ${emp.nombre_dueno || ''}! Te escribimos del equipo de soporte de G.E.M.I. por el sistema de ${emp.nombre}.`
+                          `Hola ${emp.nombre_dueno || ''}! Te escribimos del equipo de GEMI por el sistema de ${emp.nombre}.`
                         )}`}
                         target="_blank"
                         rel="noreferrer"
@@ -679,6 +702,15 @@ export const SuperAdminView = () => {
                         )}
                       </button>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={() => abrirConfiguracionArcaCliente(emp)}
+                      title="Configurar Facturación Electrónica ARCA (Servicio Setup)"
+                      className="bg-amber-500/10 hover:bg-amber-500 border border-amber-500/30 text-amber-400 hover:text-slate-950 font-bold px-3 py-2 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> ARCA / AFIP
+                    </button>
 
                     <button
                       type="button"
@@ -866,6 +898,45 @@ export const SuperAdminView = () => {
         </div>
       )}
 
+      {/* MODAL CONFIGURACIÓN ARCA (EXCLUSIVO SUPER ADMIN POR EMPRESA) */}
+      {empresaArcaSeleccionada && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-950 border border-slate-800 rounded-3xl max-w-5xl w-full p-5 sm:p-6 space-y-4 my-auto shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                  Configuración Técnica Exclusiva Super Admin
+                </span>
+                <h3 className="font-black text-lg text-white">
+                  Facturación Electrónica ARCA · {empresaArcaSeleccionada.nombre}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmpresaArcaSeleccionada(null)}
+                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {cargandoSucsArca ? (
+              <div className="py-12 text-center text-xs text-slate-400">
+                Cargando sucursales y certificados fiscales de {empresaArcaSeleccionada.nombre}...
+              </div>
+            ) : (
+              <ConfiguracionArcaCard
+                empresaId={empresaArcaSeleccionada.empresa_id}
+                usuarioId={perfil?.id}
+                usuarioNombre={`${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim()}
+                sucursales={sucursalesEmpresaArca}
+                onActualizarSucursales={() => abrirConfiguracionArcaCliente(empresaArcaSeleccionada)}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* MODAL CONFIGURACIÓN DE CLIENTE */}
       {editando && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
@@ -925,7 +996,7 @@ export const SuperAdminView = () => {
                   type="date"
                   value={editando.fecha_vencimiento || ''}
                   onChange={(e) => setEditando({ ...editando, fecha_vencimiento: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white [color-scheme:dark]"
                 />
               </div>
 
