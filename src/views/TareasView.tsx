@@ -6,8 +6,28 @@ import {
   MessageSquare, 
   Plus, 
   User, 
-  Calendar
+  Calendar,
+  Pencil,
+  Trash2,
+  X
 } from 'lucide-react';
+
+// Helper para obtener fecha local en formato YYYY-MM-DD sin desfase horario
+const obtenerFechaOffset = (diasExtra: number) => {
+  const fecha = new Date();
+  fecha.setDate(fecha.getDate() + diasExtra);
+  const year = fecha.getFullYear();
+  const month = String(fecha.getMonth() + 1).padStart(2, '0');
+  const day = String(fecha.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatearFechaAR = (fechaISO: string) => {
+  if (!fechaISO) return '';
+  const partes = fechaISO.split('-');
+  if (partes.length !== 3) return fechaISO;
+  return `${partes[2]}/${partes[1]}/${partes[0]}`;
+};
 
 export const TareasView = () => {
   const { perfil, empresa } = useAuth();
@@ -16,8 +36,9 @@ export const TareasView = () => {
   const [novedades, setNovedades] = useState<any[]>([]);
   const [equipo, setEquipo] = useState<any[]>([]);
 
-  // Modal nueva tarea
+  // Modal crear / editar tarea
   const [mostrarModalTarea, setMostrarModalTarea] = useState(false);
+  const [tareaEditandoId, setTareaEditandoId] = useState<string | null>(null);
   const [tituloTarea, setTituloTarea] = useState('');
   const [descTarea, setDescTarea] = useState('');
   const [responsableId, setResponsableId] = useState('');
@@ -64,24 +85,66 @@ export const TareasView = () => {
     if (resN.data) setNovedades(resN.data);
   };
 
-  const handleCrearTarea = async (e: React.FormEvent) => {
+  const abrirModalNuevaTarea = () => {
+    setTareaEditandoId(null);
+    setTituloTarea('');
+    setDescTarea('');
+    setResponsableId('');
+    setPrioridad('media');
+    setFechaLimite('');
+    setMostrarModalTarea(true);
+  };
+
+  const abrirModalEditarTarea = (tarea: any) => {
+    setTareaEditandoId(tarea.id);
+    setTituloTarea(tarea.titulo || '');
+    setDescTarea(tarea.descripcion || '');
+    setResponsableId(tarea.responsable_id || '');
+    setPrioridad(tarea.prioridad || 'media');
+    setFechaLimite(tarea.fecha_limite || '');
+    setMostrarModalTarea(true);
+  };
+
+  const handleGuardarTarea = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!perfil || !empresa) return;
 
-    await supabase.from('tareas_equipo').insert({
-      empresa_id: empresa.id,
-      creador_id: perfil.id,
-      responsable_id: responsableId || perfil.id,
-      titulo: tituloTarea.trim(),
-      descripcion: descTarea.trim() || null,
-      prioridad,
-      fecha_limite: fechaLimite || null,
-      estado: 'pendiente'
-    });
+    if (tareaEditandoId) {
+      await supabase
+        .from('tareas_equipo')
+        .update({
+          responsable_id: responsableId || perfil.id,
+          titulo: tituloTarea.trim(),
+          descripcion: descTarea.trim() || null,
+          prioridad,
+          fecha_limite: fechaLimite || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', tareaEditandoId);
+    } else {
+      await supabase.from('tareas_equipo').insert({
+        empresa_id: empresa.id,
+        creador_id: perfil.id,
+        responsable_id: responsableId || perfil.id,
+        titulo: tituloTarea.trim(),
+        descripcion: descTarea.trim() || null,
+        prioridad,
+        fecha_limite: fechaLimite || null,
+        estado: 'pendiente'
+      });
+    }
 
     setMostrarModalTarea(false);
+    setTareaEditandoId(null);
     setTituloTarea('');
     setDescTarea('');
+    setFechaLimite('');
+    cargarDatos();
+  };
+
+  const eliminarTarea = async (id: string) => {
+    if (!confirm('¿Eliminar esta tarea?')) return;
+    await supabase.from('tareas_equipo').delete().eq('id', id);
     cargarDatos();
   };
 
@@ -128,7 +191,7 @@ export const TareasView = () => {
         <div className="flex gap-2">
           {tabActiva === 'tareas' ? (
             <button
-              onClick={() => setMostrarModalTarea(true)}
+              onClick={abrirModalNuevaTarea}
               className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" /> Nueva Tarea
@@ -199,13 +262,31 @@ export const TareasView = () => {
                       >
                         <div className="flex justify-between items-start gap-2">
                           <h4 className="text-xs font-bold text-white leading-snug">{tarea.titulo}</h4>
-                          <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                            tarea.prioridad === 'urgente' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
-                            tarea.prioridad === 'alta' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' :
-                            'bg-slate-800 text-slate-400'
-                          }`}>
-                            {tarea.prioridad}
-                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                              tarea.prioridad === 'urgente' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
+                              tarea.prioridad === 'alta' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' :
+                              'bg-slate-800 text-slate-400'
+                            }`}>
+                              {tarea.prioridad}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEditarTarea(tarea)}
+                              title="Editar tarea o fecha"
+                              className="p-1 text-slate-400 hover:text-sky-400 rounded hover:bg-slate-900 cursor-pointer"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => eliminarTarea(tarea.id)}
+                              title="Eliminar tarea"
+                              className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-900 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
 
                         {tarea.descripcion && (
@@ -217,12 +298,15 @@ export const TareasView = () => {
                             <User className="w-3 h-3 text-sky-400" />
                             {tarea.perfiles?.nombre || 'Sin asignar'}
                           </span>
-                          {tarea.fecha_limite && (
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-slate-400" />
-                              {tarea.fecha_limite}
-                            </span>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => abrirModalEditarTarea(tarea)}
+                            title="Clic para cambiar fecha límite"
+                            className="flex items-center gap-1 text-slate-300 hover:text-sky-400 cursor-pointer font-mono"
+                          >
+                            <Calendar className="w-3 h-3 text-sky-400" />
+                            {tarea.fecha_limite ? formatearFechaAR(tarea.fecha_limite) : 'Sin fecha'}
+                          </button>
                         </div>
 
                         <div className="flex justify-end gap-1.5 pt-1">
@@ -292,11 +376,22 @@ export const TareasView = () => {
         </div>
       )}
 
-      {/* Modal Nueva Tarea */}
+      {/* Modal Crear / Editar Tarea */}
       {mostrarModalTarea && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <form onSubmit={handleCrearTarea} className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h3 className="text-sm font-black text-white uppercase tracking-wider">Crear Nueva Tarea</h3>
+          <form onSubmit={handleGuardarTarea} className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                {tareaEditandoId ? 'Editar Tarea' : 'Crear Nueva Tarea'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setMostrarModalTarea(false)}
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             
             <div>
               <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1">Título de la Tarea</label>
@@ -351,13 +446,53 @@ export const TareasView = () => {
               </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1">Fecha Límite</label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-[11px] uppercase font-bold text-slate-400">Fecha Límite</label>
+                {fechaLimite && (
+                  <button
+                    type="button"
+                    onClick={() => setFechaLimite('')}
+                    className="text-[10px] text-slate-400 hover:text-rose-400 cursor-pointer"
+                  >
+                    Quitar fecha
+                  </button>
+                )}
+              </div>
+
+              {/* Atajos rápidos de fecha */}
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { label: 'Hoy', dias: 0 },
+                  { label: 'Mañana', dias: 1 },
+                  { label: '+3 días', dias: 3 },
+                  { label: '+7 días', dias: 7 },
+                ].map((atajo) => {
+                  const valorAtajo = obtenerFechaOffset(atajo.dias);
+                  const activo = fechaLimite === valorAtajo;
+                  return (
+                    <button
+                      key={atajo.label}
+                      type="button"
+                      onClick={() => setFechaLimite(valorAtajo)}
+                      className={`py-1.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                        activo
+                          ? 'bg-sky-500/20 border-sky-500 text-sky-400'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      {atajo.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <input
                 type="date"
                 value={fechaLimite}
                 onChange={(e) => setFechaLimite(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                onClick={(e) => (e.currentTarget as any).showPicker?.()}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 [color-scheme:dark] cursor-pointer"
               />
             </div>
 
@@ -373,7 +508,7 @@ export const TareasView = () => {
                 type="submit"
                 className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-black rounded-xl uppercase tracking-wider cursor-pointer"
               >
-                Guardar Tarea
+                {tareaEditandoId ? 'Guardar Cambios' : 'Guardar Tarea'}
               </button>
             </div>
           </form>

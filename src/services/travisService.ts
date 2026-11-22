@@ -102,7 +102,7 @@ export const travisService = {
     };
   },
 
-  // 4. Invocar a TRAVIS AI Orchestrator (Edge Function)
+  // 4. Invocar a GEMI AI Orchestrator (con respaldo inteligente local si la Edge Function falla)
   async generarCampanaConIA(payload: {
     origen: 'manual' | 'opportunity_finder';
     tipo_oportunidad?: string;
@@ -111,13 +111,195 @@ export const travisService = {
     productos: { producto_id: string; rol_en_campana?: 'principal' | 'combo' | 'cross_sell' }[];
     descuento_solicitado_pct?: number;
   }) {
-    const { data, error } = await supabase.functions.invoke('travis-orchestrator', {
-      body: payload,
+    // Intento 1: Edge Function remota
+    try {
+      const { data, error } = await supabase.functions.invoke('travis-orchestrator', {
+        body: payload,
+      });
+
+      if (!error && data && !data.error && data.campaign_id) {
+        return data;
+      }
+    } catch {
+      // Si falla la Edge Function, continúa automáticamente al respaldo local
+    }
+
+    // Intento 2 (Respaldo Inteligente Directo): Arma la campaña con datos reales en Supabase
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData?.user?.id;
+    if (!userId) throw new Error('Sesión expirada. Volvé a iniciar sesión.');
+
+    const { data: perfil } = await supabase
+      .from('perfiles')
+      .select('empresa_id')
+      .eq('id', userId)
+      .single();
+
+    if (!perfil?.empresa_id) throw new Error('No se encontró la empresa del usuario.');
+    const empresaId = perfil.empresa_id;
+
+    const [{ data: empresa }, brandKit] = await Promise.all([
+      supabase.from('empresas').select('nombre').eq('id', empresaId).single(),
+      this.obtenerBrandKit(empresaId),
+    ]);
+
+    const productIds = payload.productos.map((p) => p.producto_id);
+    const { data: prodsDB, error: prodsErr } = await supabase
+      .from('productos')
+      .select('id, nombre, precio_venta, precio_costo')
+      .in('id', productIds);
+
+    if (prodsErr || !prodsDB || prodsDB.length === 0) {
+      throw new Error('No se pudieron cargar los productos seleccionados.');
+    }
+
+    const nombreMarca = brandKit?.nombre_marca || empresa?.nombre || 'Nuestra Marca';
+    const descuento = Number(payload.descuento_solicitado_pct ?? 15);
+    const prodPrincipal = prodsDB[0];
+
+    const nombreCampana =
+      prodsDB.length === 1
+        ? `Especial ${prodPrincipal.nombre}`
+        : `Cápsula ${nombreMarca} (${prodsDB.length} prendas)`;
+
+    const conceptoCampana =
+      payload.objetivo_usuario ||
+      `Acción comercial enfocada en impulsar la rotación de ${prodPrincipal.nombre} con ${descuento}% OFF cuidando la rentabilidad del local.`;
+
+    // Crear campaña principal
+    const { data: nuevaCampana, error: campErr } = await supabase
+      .from('campaigns')
+      .insert({
+        empresa_id: empresaId,
+        nombre: nombreCampana,
+        concepto: conceptoCampana,
+        origen: payload.origen,
+        estado: 'borrador',
+        creado_por: userId,
+      })
+      .select('id')
+      .single();
+
+    if (campErr || !nuevaCampana) throw campErr || new Error('No se pudo crear la campaña.');
+    const campaignId = nuevaCampana.id;
+
+    // Guardar productos asociados con snapshot de costos y precios
+    const stockEstimado = Number((payload.datos_respaldo as any)?.stock_total ?? 10);
+    await supabase.from('campaign_products').insert(
+      prodsDB.map((p) => ({
+        empresa_id: empresaId,
+        campaign_id: campaignId,
+        producto_id: p.id,
+        rol_en_campana: 'principal',
+        snapshot_nombre: p.nombre,
+        snapshot_precio_lista: Number(p.precio_venta ?? 0),
+        snapshot_costo: Number(p.precio_costo ?? 0),
+        snapshot_stock_total: stockEstimado,
+        costo_faltante: !p.precio_costo || Number(p.precio_costo) <= 0,
+      }))
+    );
+
+    // Calcular simulación financiera
+    const precioListaProm =
+      prodsDB.reduce((acc, p) => acc + Number(p.precio_venta ?? 0), 0) / prodsDB.length;
+    const costoProm =
+      prodsDB.reduce((acc, p) => acc + Number(p.precio_costo ?? 0), 0) / prodsDB.length;
+    const precioFinal = precioListaProm * (1 - descuento / 100);
+    const margenPct = precioFinal > 0 ? Number((((precioFinal - costoProm) / precioFinal) * 100).toFixed(2)) : 0;
+    const margenMin = Number(brandKit?.margen_minimo_pct ?? 25);
+    const alertaMargen = margenPct < margenMin;
+
+    await supabase.from('campaign_promotions').insert({
+      empresa_id: empresaId,
+      campaign_id: campaignId,
+      nombre_promo: `${descuento}% OFF ${prodPrincipal.nombre}`,
+      tipo_descuento: 'porcentaje',
+      valor_descuento: descuento,
+      precio_promocional_promedio: Number(precioFinal.toFixed(2)),
+      margen_bruto_resultante_pct: margenPct,
+      alerta_margen: alertaMargen,
+      mensaje_alerta: alertaMargen
+        ? `Margen (${margenPct}%) inferior al mínimo configurado (${margenMin}%)`
+        : null,
+      estado_aprobacion: 'pendiente',
     });
 
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
-    return data;
+    // Generar textos listos para redes y local
+    const precioFormateado = `$${Math.round(precioFinal).toLocaleString('es-AR')}`;
+    const listaFormateado = `$${Math.round(precioListaProm).toLocaleString('es-AR')}`;
+
+    await supabase.from('campaign_copies').insert([
+      {
+        empresa_id: empresaId,
+        campaign_id: campaignId,
+        canal: 'instagram_post',
+        titulo: `${descuento}% OFF EN ${prodPrincipal.nombre.toUpperCase()}`,
+        cuerpo: `Aprovechá por tiempo limitado ${descuento}% OFF en ${prodPrincipal.nombre} en ${nombreMarca}.\n\nAntes ${listaFormateado} → Ahora ${precioFormateado}.\nStock limitado por talle en sucursal.`,
+        llamado_accion: 'Escribinos por DM o pasá hoy por el local antes de que vuelen los talles.',
+        estado_aprobacion: 'pendiente',
+      },
+      {
+        empresa_id: empresaId,
+        campaign_id: campaignId,
+        canal: 'instagram_story',
+        titulo: `DROP & PROMO · ${descuento}% OFF`,
+        cuerpo: `Solo por 48 hs: ${prodPrincipal.nombre} a ${precioFormateado} (${descuento}% OFF). Consultá talles disponibles ahora.`,
+        llamado_accion: 'Respondé esta historia con tu talle y te lo reservamos.',
+        estado_aprobacion: 'pendiente',
+      },
+      {
+        empresa_id: empresaId,
+        campaign_id: campaignId,
+        canal: 'whatsapp_difusion',
+        titulo: `Beneficio exclusivo ${nombreMarca}`,
+        cuerpo: `Hola! Te avisamos antes que a nadie: activamos un ${descuento}% OFF especial en ${prodPrincipal.nombre} (queda en ${precioFormateado}). Si querés que te separemos un talle, respondé este mensaje.`,
+        llamado_accion: 'Reservá tu talle por acá.',
+        estado_aprobacion: 'pendiente',
+      },
+      {
+        empresa_id: empresaId,
+        campaign_id: campaignId,
+        canal: 'cartel_local',
+        titulo: `PROMO ESPECIAL ${descuento}% OFF`,
+        cuerpo: `${prodPrincipal.nombre.toUpperCase()} · ANTES ${listaFormateado} · AHORA ${precioFormateado}`,
+        llamado_accion: 'Consultá talles disponibles en caja.',
+        estado_aprobacion: 'pendiente',
+      },
+    ]);
+
+    // Cronograma de ejecución de 3 pasos
+    const hoy = new Date();
+    const mas2Dias = new Date(hoy.getTime() + 2 * 24 * 60 * 60 * 1000);
+    const mas4Dias = new Date(hoy.getTime() + 4 * 24 * 60 * 60 * 1000);
+
+    await supabase.from('campaign_calendar').insert([
+      {
+        empresa_id: empresaId,
+        campaign_id: campaignId,
+        actividad: `Lanzamiento oficial: publicar post y difusión WhatsApp (${descuento}% OFF)`,
+        canal: 'Instagram + WhatsApp',
+        fecha_programada: hoy.toISOString(),
+        estado: 'pendiente',
+      },
+      {
+        empresa_id: empresaId,
+        campaign_id: campaignId,
+        actividad: 'Recordatorio en Historias mostrando talles disponibles en local',
+        canal: 'Instagram Stories',
+        fecha_programada: mas2Dias.toISOString(),
+        estado: 'pendiente',
+      },
+      {
+        empresa_id: empresaId,
+        campaign_id: campaignId,
+        actividad: 'Últimas horas de promoción y evaluación de rotación de stock',
+        canal: 'Mostrador + Redes',
+        fecha_programada: mas4Dias.toISOString(),
+        estado: 'pendiente',
+      },
+    ]);
+
+    return { campaign_id: campaignId, fallback: true };
   },
 
   // 5. Actualizar simulación de promoción (Promotion Engine en vivo)

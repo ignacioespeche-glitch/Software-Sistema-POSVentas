@@ -21,10 +21,15 @@ export const AnuncioGlobalBanner = () => {
   const [anuncio, setAnuncio] = useState<AnuncioGlobal | null>(null);
   const [empresaNombre, setEmpresaNombre] = useState<string>('');
   const [enviando, setEnviando] = useState(false);
-  const [cerradoTemporal, setCerradoTemporal] = useState(false);
+  const [cerradoDefinitivo, setCerradoDefinitivo] = useState(false);
+
+  const getStorageKey = (anuncioId: string, empresaId: string) =>
+    `gemi_anuncio_cerrado_${anuncioId}_${empresaId}`;
 
   useEffect(() => {
     const cargar = async () => {
+      if (!perfil?.empresa_id) return;
+
       const { data } = await supabase
         .from('saas_anuncios')
         .select('id, mensaje, activo, interesados')
@@ -33,22 +38,27 @@ export const AnuncioGlobalBanner = () => {
         .limit(1)
         .maybeSingle();
 
-      if (data) setAnuncio(data as AnuncioGlobal);
-
-      if (perfil?.empresa_id) {
-        const { data: emp } = await supabase
-          .from('empresas')
-          .select('nombre')
-          .eq('id', perfil.empresa_id)
-          .single();
-        if (emp) setEmpresaNombre(emp.nombre);
+      if (data) {
+        const yaCerrado = localStorage.getItem(getStorageKey(data.id, perfil.empresa_id)) === 'true';
+        if (yaCerrado) {
+          setCerradoDefinitivo(true);
+          return;
+        }
+        setAnuncio(data as AnuncioGlobal);
       }
+
+      const { data: emp } = await supabase
+        .from('empresas')
+        .select('nombre')
+        .eq('id', perfil.empresa_id)
+        .single();
+      if (emp) setEmpresaNombre(emp.nombre);
     };
 
     cargar();
   }, [perfil?.empresa_id]);
 
-  if (!anuncio || !anuncio.activo || cerradoTemporal || !perfil?.empresa_id) {
+  if (!anuncio || !anuncio.activo || cerradoDefinitivo || !perfil?.empresa_id) {
     return null;
   }
 
@@ -77,8 +87,13 @@ export const AnuncioGlobalBanner = () => {
     setEnviando(false);
   };
 
+  const handleCerrarAnuncio = () => {
+    localStorage.setItem(getStorageKey(anuncio.id, perfil.empresa_id), 'true');
+    setCerradoDefinitivo(true);
+  };
+
   const whatsappUrl = `https://wa.me/5492610000000?text=${encodeURIComponent(
-    `Hola equipo de G.E.M.I.! Somos de *${empresaNombre || 'nuestro local'}* y estamos interesados en la novedad: "${anuncio.mensaje}".`
+    `Hola equipo de GEMI! Somos de *${empresaNombre || 'nuestro local'}* y estamos interesados en la novedad: "${anuncio.mensaje}".`
   )}`;
 
   return (
@@ -117,9 +132,9 @@ export const AnuncioGlobalBanner = () => {
 
         <button
           type="button"
-          onClick={() => setCerradoTemporal(true)}
+          onClick={handleCerrarAnuncio}
           className="text-slate-400 hover:text-white p-1 cursor-pointer"
-          title="Ocultar por ahora"
+          title="No volver a mostrar este anuncio"
         >
           <X className="w-3.5 h-3.5" />
         </button>
