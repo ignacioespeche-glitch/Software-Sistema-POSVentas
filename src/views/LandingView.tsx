@@ -141,11 +141,15 @@ export const LandingView = () => {
       {/* ================================================================= */}
       <header className="sticky top-0 z-40 bg-[#121212]/90 backdrop-blur-md border-b border-zinc-800/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3">
+          <Link
+            to="/"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="flex items-center gap-3 cursor-pointer"
+          >
             <img
               src="/logo-gemi.jpeg"
               alt="GEMI Software"
-              className="h-9 w-auto rounded-lg object-contain bg-[#1E1E1E]"
+              className="h-11 w-auto rounded-lg object-contain bg-[#1E1E1E]"
             />
           </Link>
 
@@ -944,7 +948,13 @@ export const LandingView = () => {
       <footer className="border-t border-zinc-800 bg-[#121212] py-8 px-4 sm:px-6 text-xs text-zinc-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <img src="/logo-gemi.jpeg" alt="GEMI Software" className="h-7 w-auto rounded" />
+            <Link
+              to="/"
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="cursor-pointer"
+            >
+              <img src="/logo-gemi.jpeg" alt="GEMI Software" className="h-8 w-auto rounded" />
+            </Link>
             <span className="hidden md:inline text-zinc-400">
               · Toda la gestión de tu negocio en un mismo lugar.
             </span>

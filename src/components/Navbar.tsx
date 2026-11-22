@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { Sucursal } from '../types/database';
@@ -69,12 +69,16 @@ export const Navbar = () => {
             {menuMovilAbierto ? <X className="w-5 h-5 text-sky-400" /> : <Menu className="w-5 h-5 text-slate-200" />}
           </button>
 
-          <div className="flex items-center gap-1.5">
+          <Link
+            to="/"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="flex items-center gap-1.5 hover:opacity-85 transition-opacity cursor-pointer"
+          >
             <span className="font-black text-sm md:text-base tracking-widest text-white">{nombreMarca}</span>
             <span className="text-[9px] md:text-[10px] bg-slate-900 text-sky-400 font-mono px-1 py-0.5 rounded border border-slate-800">
               v1.0
             </span>
-          </div>
+          </Link>
 
           <div className="hidden md:block">
             {esAdmin ? (
@@ -293,12 +297,19 @@ export const Navbar = () => {
           <div className="relative w-4/5 max-w-xs bg-slate-950 border-r border-slate-800 h-full p-5 flex flex-col justify-between shadow-2xl overflow-y-auto">
             <div className="space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                <div className="flex items-center gap-2">
+                <Link
+                  to="/"
+                  onClick={() => {
+                    cerrarMenu();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="flex items-center gap-2"
+                >
                   <span className="font-black text-lg tracking-widest text-white">{nombreMarca}</span>
                   <span className="text-[10px] bg-slate-900 text-sky-400 font-mono px-1.5 py-0.5 rounded border border-slate-800">
                     v1.0
                   </span>
-                </div>
+                </Link>
                 <button
                   onClick={cerrarMenu}
                   className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900"
