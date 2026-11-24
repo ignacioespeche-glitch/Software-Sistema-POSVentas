@@ -113,8 +113,42 @@ export const Navbar = () => {
           </div>
         </div>
 
-        {/* Derecha: Estado de conexión, Caja y Perfil */}
+        {/* Derecha: Accesos directos Dueños (GEMI AI + Panel Admin) + Estado + Perfil */}
         <div className="flex items-center gap-2 md:gap-3">
+          {esAdmin && (
+            <div className="hidden md:flex items-center gap-1.5 mr-1">
+              {(empresa as any)?.modulo_campaign_studio !== false && (
+                <NavLink
+                  to="/gemi-ai"
+                  className={({ isActive }) =>
+                    `flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors ${
+                      isActive
+                        ? 'bg-sky-500 text-slate-950 shadow-sm'
+                        : 'bg-slate-900 border border-slate-800 text-slate-200 hover:text-sky-300 hover:border-sky-500/40'
+                    }`
+                  }
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span>GEMI AI</span>
+                </NavLink>
+              )}
+
+              <NavLink
+                to="/admin"
+                className={({ isActive }) =>
+                  `flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors ${
+                    isActive
+                      ? 'bg-sky-500 text-slate-950 shadow-sm'
+                      : 'bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
+                  }`
+                }
+              >
+                <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                <span>Panel Admin</span>
+              </NavLink>
+            </div>
+          )}
+
           <div
             className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
               online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
@@ -153,7 +187,7 @@ export const Navbar = () => {
         </div>
       </header>
 
-      {/* Menú lateral desplegable (Computadora y Celular) */}
+      {/* Menú lateral desplegable */}
       {menuAbierto && (
         <div className="fixed inset-0 z-50 flex">
           <div
@@ -222,7 +256,7 @@ export const Navbar = () => {
               {/* Lista de Secciones */}
               <nav className="space-y-1">
                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-2 block">
-                  Secciones
+                  Operación Diaria
                 </span>
 
                 <NavLink
@@ -339,38 +373,44 @@ export const Navbar = () => {
                   </NavLink>
                 )}
 
-                {esAdmin && (empresa as any)?.modulo_campaign_studio !== false && (
-                  <NavLink
-                    to="/gemi-ai"
-                    onClick={cerrarMenu}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                        isActive
-                          ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
-                          : 'text-sky-400 bg-sky-500/10 border border-sky-500/20'
-                      }`
-                    }
-                  >
-                    <Sparkles className="w-4 h-4 shrink-0" />
-                    GEMI AI
-                  </NavLink>
-                )}
-
                 {esAdmin && (
-                  <NavLink
-                    to="/admin"
-                    onClick={cerrarMenu}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                        isActive
-                          ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
-                          : 'text-sky-400 bg-sky-500/10 border border-sky-500/20'
-                      }`
-                    }
-                  >
-                    <ShieldAlert className="w-4 h-4 shrink-0" />
-                    Panel Admin
-                  </NavLink>
+                  <div className="pt-3 mt-3 border-t border-slate-800/80 space-y-1">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-2 block">
+                      Dirección & Marketing
+                    </span>
+
+                    {(empresa as any)?.modulo_campaign_studio !== false && (
+                      <NavLink
+                        to="/gemi-ai"
+                        onClick={cerrarMenu}
+                        className={({ isActive }) =>
+                          `flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                            isActive
+                              ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
+                              : 'text-sky-400 bg-sky-500/10 border border-sky-500/20'
+                          }`
+                        }
+                      >
+                        <Sparkles className="w-4 h-4 shrink-0" />
+                        GEMI AI
+                      </NavLink>
+                    )}
+
+                    <NavLink
+                      to="/admin"
+                      onClick={cerrarMenu}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                          isActive
+                            ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
+                            : 'text-sky-400 bg-sky-500/10 border border-sky-500/20'
+                        }`
+                      }
+                    >
+                      <ShieldAlert className="w-4 h-4 shrink-0" />
+                      Panel Admin
+                    </NavLink>
+                  </div>
                 )}
               </nav>
             </div>
