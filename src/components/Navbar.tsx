@@ -26,7 +26,7 @@ export const Navbar = () => {
   const { perfil, empresa, sucursalActiva, setSucursalActiva, cajaActiva, cerrarSesion } = useAuth();
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [online, setOnline] = useState(navigator.onLine);
-  const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   useEffect(() => {
     if (empresa?.id) {
@@ -53,45 +53,47 @@ export const Navbar = () => {
   }, [empresa?.id]);
 
   const esAdmin = perfil?.rol === 'admin';
-  const cerrarMenu = () => setMenuMovilAbierto(false);
+  const cerrarMenu = () => setMenuAbierto(false);
   const nombreMarca = empresa?.nombre?.toUpperCase() || 'GEMI POS';
   const nombreLocalActual = sucursalActiva?.nombre || 'Local';
 
   return (
     <>
-      <header className="bg-slate-950 border-b border-slate-800/80 px-3 md:px-4 py-2.5 flex items-center justify-between text-xs sticky top-0 z-40 select-none">
-        <div className="flex items-center gap-2 md:gap-3">
+      <header className="bg-slate-950 border-b border-slate-800/80 px-3 md:px-5 py-2.5 flex items-center justify-between text-xs sticky top-0 z-40 select-none">
+        {/* Izquierda: Botón 3 líneas + Marca + Selector de Sucursal */}
+        <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => setMenuMovilAbierto(!menuMovilAbierto)}
-            className="md:hidden p-1.5 text-slate-300 hover:text-white hover:bg-slate-900 rounded-lg transition-colors cursor-pointer"
+            onClick={() => setMenuAbierto(!menuAbierto)}
+            className="p-2 text-slate-200 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl transition-colors cursor-pointer"
             aria-label="Abrir menú de navegación"
+            title="Menú de secciones"
           >
-            {menuMovilAbierto ? <X className="w-5 h-5 text-sky-400" /> : <Menu className="w-5 h-5 text-slate-200" />}
+            {menuAbierto ? <X className="w-5 h-5 text-sky-400" /> : <Menu className="w-5 h-5" />}
           </button>
 
           <Link
             to="/"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="flex items-center gap-1.5 hover:opacity-85 transition-opacity cursor-pointer"
+            className="flex items-center gap-2 hover:opacity-85 transition-opacity cursor-pointer"
           >
             <span className="font-black text-sm md:text-base tracking-widest text-white">{nombreMarca}</span>
-            <span className="text-[9px] md:text-[10px] bg-slate-900 text-sky-400 font-mono px-1 py-0.5 rounded border border-slate-800">
+            <span className="text-[9px] md:text-[10px] bg-slate-900 text-sky-400 font-mono px-1.5 py-0.5 rounded border border-slate-800">
               v1.0
             </span>
           </Link>
 
-          <div className="hidden md:block">
+          <div className="hidden sm:block">
             {esAdmin ? (
-              <div className="relative flex items-center bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200">
-                <Store className="w-3.5 h-3.5 text-sky-400 mr-1.5 shrink-0" />
+              <div className="relative flex items-center bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200">
+                <Store className="w-3.5 h-3.5 text-sky-400 mr-2 shrink-0" />
                 <select
                   value={sucursalActiva?.id || ''}
                   onChange={(e) => {
                     const encontrada = sucursales.find((s) => s.id === e.target.value);
                     if (encontrada) setSucursalActiva(encontrada);
                   }}
-                  className="bg-transparent font-bold text-xs text-white focus:outline-none cursor-pointer pr-4"
+                  className="bg-transparent font-bold text-xs text-white focus:outline-none cursor-pointer pr-2"
                 >
                   {sucursales.map((s) => (
                     <option key={s.id} value={s.id} className="bg-slate-950 text-white">
@@ -101,7 +103,7 @@ export const Navbar = () => {
                 </select>
               </div>
             ) : (
-              <div className="flex items-center bg-slate-900/90 border border-slate-800/80 rounded-lg px-3 py-1.5 text-slate-200">
+              <div className="flex items-center bg-slate-900/90 border border-slate-800/80 rounded-xl px-3 py-1.5 text-slate-200">
                 <Store className="w-3.5 h-3.5 text-sky-400 mr-2 shrink-0" />
                 <span className="font-bold text-xs text-white">
                   {sucursalActiva?.nombre || 'Mi Sucursal'}
@@ -109,149 +111,12 @@ export const Navbar = () => {
               </div>
             )}
           </div>
-
-          <nav className="hidden md:flex items-center gap-1">
-            <NavLink
-              to="/"
-              className={({ isActive }) =>
-                `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
-                  isActive ? 'bg-sky-500/10 text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-                }`
-              }
-            >
-              <ShoppingCart className="w-3.5 h-3.5 shrink-0" />
-              <span>Tus Ventas</span>
-            </NavLink>
-
-            <NavLink
-              to="/caja"
-              className={({ isActive }) =>
-                `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
-                  isActive ? 'bg-sky-500/10 text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-                }`
-              }
-            >
-              <DollarSign className="w-3.5 h-3.5 shrink-0" />
-              <span>Tu Caja</span>
-            </NavLink>
-
-            {empresa?.modulo_senas !== false && (
-              <NavLink
-                to="/reservas"
-                className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
-                    isActive ? 'bg-sky-500/10 text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-                  }`
-                }
-              >
-                <BookmarkCheck className="w-3.5 h-3.5 shrink-0" />
-                <span>Reservas</span>
-              </NavLink>
-            )}
-
-            {empresa?.modulo_cambios !== false && (
-              <NavLink
-                to="/cambios"
-                className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
-                    isActive ? 'bg-sky-500/10 text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-                  }`
-                }
-              >
-                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-                <span>Cambios</span>
-              </NavLink>
-            )}
-
-            <NavLink
-              to="/catalogo"
-              className={({ isActive }) =>
-                `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
-                  isActive ? 'bg-sky-500/10 text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-                }`
-              }
-            >
-              <Boxes className="w-3.5 h-3.5 shrink-0" />
-              <span>Tus Prendas</span>
-            </NavLink>
-
-            {empresa?.modulo_traspasos && (
-              <NavLink
-                to="/traspasos"
-                className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
-                    isActive ? 'bg-sky-500/10 text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-                  }`
-                }
-              >
-                <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
-                <span>Mover Stock</span>
-              </NavLink>
-            )}
-
-            {Boolean((empresa as any)?.modulo_tareas) && (
-              <NavLink
-                to="/tareas"
-                className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
-                    isActive ? 'bg-sky-500/10 text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-                  }`
-                }
-              >
-                <CheckSquare className="w-3.5 h-3.5 shrink-0" />
-                <span>Tareas</span>
-              </NavLink>
-            )}
-
-            {(empresa as any)?.modulo_calendario !== false && (
-              <NavLink
-                to="/calendario"
-                className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
-                    isActive ? 'bg-sky-500/10 text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-                  }`
-                }
-              >
-                <Calendar className="w-3.5 h-3.5 shrink-0" />
-                <span>Agenda {nombreLocalActual}</span>
-              </NavLink>
-            )}
-
-            {esAdmin && (empresa as any)?.modulo_campaign_studio !== false && (
-              <NavLink
-                to="/gemi-ai"
-                className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
-                    isActive
-                      ? 'bg-sky-500/15 text-sky-400 font-bold border border-sky-500/30'
-                      : 'text-slate-300 hover:text-sky-300 hover:bg-slate-900'
-                  }`
-                }
-              >
-                <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                <span>GEMI AI</span>
-              </NavLink>
-            )}
-
-            {esAdmin && (
-              <NavLink
-                to="/admin"
-                className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
-                    isActive ? 'bg-sky-500 text-slate-950 font-bold' : 'text-sky-400 hover:bg-sky-500/10'
-                  }`
-                }
-              >
-                <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-                <span>Panel Admin</span>
-              </NavLink>
-            )}
-          </nav>
         </div>
 
+        {/* Derecha: Estado de conexión, Caja y Perfil */}
         <div className="flex items-center gap-2 md:gap-3">
           <div
-            className={`hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
               online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
             }`}
           >
@@ -260,7 +125,7 @@ export const Navbar = () => {
           </div>
 
           <div
-            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
               cajaActiva ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
             }`}
           >
@@ -269,7 +134,7 @@ export const Navbar = () => {
             <span className="xs:hidden">{cajaActiva ? 'Abierta' : 'Cerrada'}</span>
           </div>
 
-          <div className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-3">
+          <div className="hidden md:flex items-center gap-2.5 border-l border-slate-800 pl-3">
             <div className="text-right leading-tight">
               <p className="font-bold text-slate-200 text-xs">
                 {perfil?.nombre} {perfil?.apellido || ''}
@@ -288,15 +153,17 @@ export const Navbar = () => {
         </div>
       </header>
 
-      {menuMovilAbierto && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
+      {/* Menú lateral desplegable (Computadora y Celular) */}
+      {menuAbierto && (
+        <div className="fixed inset-0 z-50 flex">
           <div
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
+            className="fixed inset-0 bg-black/75 backdrop-blur-xs transition-opacity"
             onClick={cerrarMenu}
           />
 
-          <div className="relative w-4/5 max-w-xs bg-slate-950 border-r border-slate-800 h-full p-5 flex flex-col justify-between shadow-2xl overflow-y-auto">
-            <div className="space-y-6">
+          <aside className="relative w-72 max-w-[85vw] bg-slate-950 border-r border-slate-800 h-full p-5 flex flex-col justify-between shadow-2xl overflow-y-auto">
+            <div className="space-y-5">
+              {/* Cabecera del menú */}
               <div className="flex items-center justify-between pb-4 border-b border-slate-800">
                 <Link
                   to="/"
@@ -306,19 +173,20 @@ export const Navbar = () => {
                   }}
                   className="flex items-center gap-2"
                 >
-                  <span className="font-black text-lg tracking-widest text-white">{nombreMarca}</span>
+                  <span className="font-black text-base tracking-widest text-white">{nombreMarca}</span>
                   <span className="text-[10px] bg-slate-900 text-sky-400 font-mono px-1.5 py-0.5 rounded border border-slate-800">
                     v1.0
                   </span>
                 </Link>
                 <button
                   onClick={cerrarMenu}
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900"
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-900 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
+              {/* Selector de Sucursal dentro del menú */}
               <div>
                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-2 block">
                   Sucursal de Trabajo
@@ -351,10 +219,12 @@ export const Navbar = () => {
                 )}
               </div>
 
-              <div className="space-y-1">
+              {/* Lista de Secciones */}
+              <nav className="space-y-1">
                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-2 block">
-                  Menú Principal
+                  Secciones
                 </span>
+
                 <NavLink
                   to="/"
                   onClick={cerrarMenu}
@@ -364,7 +234,7 @@ export const Navbar = () => {
                     }`
                   }
                 >
-                  <ShoppingCart className="w-4 h-4" />
+                  <ShoppingCart className="w-4 h-4 shrink-0" />
                   Tus Ventas
                 </NavLink>
 
@@ -377,7 +247,7 @@ export const Navbar = () => {
                     }`
                   }
                 >
-                  <DollarSign className="w-4 h-4" />
+                  <DollarSign className="w-4 h-4 shrink-0" />
                   Tu Caja
                 </NavLink>
 
@@ -391,7 +261,7 @@ export const Navbar = () => {
                       }`
                     }
                   >
-                    <BookmarkCheck className="w-4 h-4" />
+                    <BookmarkCheck className="w-4 h-4 shrink-0" />
                     Reservas
                   </NavLink>
                 )}
@@ -406,7 +276,7 @@ export const Navbar = () => {
                       }`
                     }
                   >
-                    <RotateCcw className="w-4 h-4" />
+                    <RotateCcw className="w-4 h-4 shrink-0" />
                     Cambios
                   </NavLink>
                 )}
@@ -420,7 +290,7 @@ export const Navbar = () => {
                     }`
                   }
                 >
-                  <Boxes className="w-4 h-4" />
+                  <Boxes className="w-4 h-4 shrink-0" />
                   Tus Prendas
                 </NavLink>
 
@@ -434,7 +304,7 @@ export const Navbar = () => {
                       }`
                     }
                   >
-                    <ArrowLeftRight className="w-4 h-4" />
+                    <ArrowLeftRight className="w-4 h-4 shrink-0" />
                     Mover Stock
                   </NavLink>
                 )}
@@ -449,7 +319,7 @@ export const Navbar = () => {
                       }`
                     }
                   >
-                    <CheckSquare className="w-4 h-4" />
+                    <CheckSquare className="w-4 h-4 shrink-0" />
                     Tareas
                   </NavLink>
                 )}
@@ -464,7 +334,7 @@ export const Navbar = () => {
                       }`
                     }
                   >
-                    <Calendar className="w-4 h-4" />
+                    <Calendar className="w-4 h-4 shrink-0" />
                     Agenda {nombreLocalActual}
                   </NavLink>
                 )}
@@ -481,7 +351,7 @@ export const Navbar = () => {
                       }`
                     }
                   >
-                    <Sparkles className="w-4 h-4" />
+                    <Sparkles className="w-4 h-4 shrink-0" />
                     GEMI AI
                   </NavLink>
                 )}
@@ -498,14 +368,15 @@ export const Navbar = () => {
                       }`
                     }
                   >
-                    <ShieldAlert className="w-4 h-4" />
+                    <ShieldAlert className="w-4 h-4 shrink-0" />
                     Panel Admin
                   </NavLink>
                 )}
-              </div>
+              </nav>
             </div>
 
-            <div className="pt-4 border-t border-slate-800 space-y-3">
+            {/* Pie del menú con usuario y cerrar sesión */}
+            <div className="pt-4 border-t border-slate-800 space-y-3 mt-6">
               <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
                 <div>
                   <p className="font-bold text-white text-xs">
@@ -531,7 +402,7 @@ export const Navbar = () => {
                 Cerrar Sesión
               </button>
             </div>
-          </div>
+          </aside>
         </div>
       )}
     </>
