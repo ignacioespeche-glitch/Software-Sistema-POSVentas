@@ -55,11 +55,12 @@ export const Navbar = () => {
   const esAdmin = perfil?.rol === 'admin';
   const cerrarMenu = () => setMenuMovilAbierto(false);
   const nombreMarca = empresa?.nombre?.toUpperCase() || 'GEMI POS';
+  const nombreLocalActual = sucursalActiva?.nombre || 'Local';
 
   return (
     <>
       <header className="bg-slate-950 border-b border-slate-800/80 px-3 md:px-4 py-2.5 flex items-center justify-between text-xs sticky top-0 z-40 select-none">
-        <div className="flex items-center gap-2 md:gap-4">
+        <div className="flex items-center gap-2 md:gap-3">
           <button
             type="button"
             onClick={() => setMenuMovilAbierto(!menuMovilAbierto)}
@@ -118,8 +119,8 @@ export const Navbar = () => {
                 }`
               }
             >
-              <ShoppingCart className="w-3.5 h-3.5" />
-              Punto de Venta
+              <ShoppingCart className="w-3.5 h-3.5 shrink-0" />
+              <span>Tus Ventas</span>
             </NavLink>
 
             <NavLink
@@ -130,8 +131,8 @@ export const Navbar = () => {
                 }`
               }
             >
-              <DollarSign className="w-3.5 h-3.5" />
-              Caja & Turnos
+              <DollarSign className="w-3.5 h-3.5 shrink-0" />
+              <span>Tu Caja</span>
             </NavLink>
 
             {empresa?.modulo_senas !== false && (
@@ -143,8 +144,8 @@ export const Navbar = () => {
                   }`
                 }
               >
-                <BookmarkCheck className="w-3.5 h-3.5" />
-                Señas
+                <BookmarkCheck className="w-3.5 h-3.5 shrink-0" />
+                <span>Reservas</span>
               </NavLink>
             )}
 
@@ -157,8 +158,8 @@ export const Navbar = () => {
                   }`
                 }
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Cambios
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                <span>Cambios</span>
               </NavLink>
             )}
 
@@ -170,8 +171,8 @@ export const Navbar = () => {
                 }`
               }
             >
-              <Boxes className="w-3.5 h-3.5" />
-              Inventario
+              <Boxes className="w-3.5 h-3.5 shrink-0" />
+              <span>Tus Prendas</span>
             </NavLink>
 
             {empresa?.modulo_traspasos && (
@@ -183,8 +184,8 @@ export const Navbar = () => {
                   }`
                 }
               >
-                <ArrowLeftRight className="w-3.5 h-3.5" />
-                Traspasos
+                <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
+                <span>Mover Stock</span>
               </NavLink>
             )}
 
@@ -197,8 +198,8 @@ export const Navbar = () => {
                   }`
                 }
               >
-                <CheckSquare className="w-3.5 h-3.5" />
-                Tareas
+                <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+                <span>Tareas</span>
               </NavLink>
             )}
 
@@ -211,8 +212,8 @@ export const Navbar = () => {
                   }`
                 }
               >
-                <Calendar className="w-3.5 h-3.5" />
-                Calendario
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>Agenda {nombreLocalActual}</span>
               </NavLink>
             )}
 
@@ -227,8 +228,8 @@ export const Navbar = () => {
                   }`
                 }
               >
-                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                GEMI AI
+                <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <span>GEMI AI</span>
               </NavLink>
             )}
 
@@ -241,8 +242,8 @@ export const Navbar = () => {
                   }`
                 }
               >
-                <ShieldAlert className="w-3.5 h-3.5" />
-                Panel Admin
+                <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                <span>Panel Admin</span>
               </NavLink>
             )}
           </nav>
@@ -364,7 +365,7 @@ export const Navbar = () => {
                   }
                 >
                   <ShoppingCart className="w-4 h-4" />
-                  Punto de Venta
+                  Tus Ventas
                 </NavLink>
 
                 <NavLink
@@ -377,7 +378,7 @@ export const Navbar = () => {
                   }
                 >
                   <DollarSign className="w-4 h-4" />
-                  Caja & Turnos
+                  Tu Caja
                 </NavLink>
 
                 {empresa?.modulo_senas !== false && (
@@ -391,7 +392,7 @@ export const Navbar = () => {
                     }
                   >
                     <BookmarkCheck className="w-4 h-4" />
-                    Señas
+                    Reservas
                   </NavLink>
                 )}
 
@@ -420,7 +421,7 @@ export const Navbar = () => {
                   }
                 >
                   <Boxes className="w-4 h-4" />
-                  Inventario
+                  Tus Prendas
                 </NavLink>
 
                 {empresa?.modulo_traspasos && (
@@ -434,7 +435,7 @@ export const Navbar = () => {
                     }
                   >
                     <ArrowLeftRight className="w-4 h-4" />
-                    Traspasos
+                    Mover Stock
                   </NavLink>
                 )}
 
@@ -464,7 +465,7 @@ export const Navbar = () => {
                     }
                   >
                     <Calendar className="w-4 h-4" />
-                    Calendario
+                    Agenda {nombreLocalActual}
                   </NavLink>
                 )}
 
