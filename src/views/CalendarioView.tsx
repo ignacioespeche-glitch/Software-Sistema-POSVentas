@@ -13,6 +13,7 @@ import {
 
 interface Evento {
   id: string;
+  sucursal_id?: string | null;
   titulo: string;
   descripcion?: string;
   fecha_inicio: string;
@@ -39,7 +40,14 @@ const COLOR_MAP: Record<string, { bg: string; text: string; border: string }> = 
 };
 
 export const CalendarioView = () => {
-  const { perfil, empresa } = useAuth();
+  const { perfil, empresa, sucursalActiva } = useAuth();
+  const esAdmin = perfil?.rol === 'admin';
+
+  const sucursalEfectivaId = esAdmin
+    ? (sucursalActiva?.id || perfil?.sucursal_id)
+    : (perfil?.sucursal_id || sucursalActiva?.id);
+
+  const sucursalEfectivaNombre = sucursalActiva?.nombre || 'Sucursal';
 
   const fechaHoy = new Date();
   const [mesActual, setMesActual] = useState(fechaHoy.getMonth());
@@ -61,11 +69,11 @@ export const CalendarioView = () => {
 
   useEffect(() => {
     cargarEventos();
-  }, [mesActual, anioActual, empresa?.id]);
+  }, [mesActual, anioActual, empresa?.id, sucursalEfectivaId]);
 
   const cargarEventos = async () => {
     const empresaId = empresa?.id || perfil?.empresa_id;
-    if (!empresaId) return;
+    if (!empresaId || !sucursalEfectivaId) return;
 
     // Rango del mes visible con margen para días de meses adyacentes
     const primerDia = new Date(anioActual, mesActual - 1, 20).toISOString().split('T')[0];
@@ -75,6 +83,7 @@ export const CalendarioView = () => {
       .from('calendario_eventos')
       .select('*')
       .eq('empresa_id', empresaId)
+      .eq('sucursal_id', sucursalEfectivaId)
       .gte('fecha_inicio', primerDia)
       .lte('fecha_inicio', ultimoDia)
       .order('fecha_inicio', { ascending: true });
@@ -129,12 +138,13 @@ export const CalendarioView = () => {
   const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault();
     const empresaId = empresa?.id || perfil?.empresa_id;
-    if (!empresaId || !titulo.trim() || !fechaInicio) return;
+    if (!empresaId || !sucursalEfectivaId || !titulo.trim() || !fechaInicio) return;
 
     setGuardando(true);
 
     const payload = {
       empresa_id: empresaId,
+      sucursal_id: sucursalEfectivaId,
       creador_id: perfil?.id,
       titulo: titulo.trim(),
       descripcion: descripcion.trim() || null,
@@ -214,13 +224,20 @@ export const CalendarioView = () => {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-950 text-white select-none">
       {/* Barra superior estilo Google Calendar */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-slate-800 bg-slate-900/40">
+      <header className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-b border-slate-800 bg-slate-900/40">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-sky-500/10 text-sky-400 rounded-xl border border-sky-500/20">
               <CalendarIcon className="w-5 h-5" />
             </div>
-            <span className="font-bold text-lg text-slate-100 tracking-tight">Calendario</span>
+            <div>
+              <span className="font-bold text-lg text-slate-100 tracking-tight block leading-none">
+                Agenda · <span className="text-sky-400">{sucursalEfectivaNombre}</span>
+              </span>
+              <span className="text-[10px] text-slate-400">
+                Compromisos exclusivos de esta sucursal
+              </span>
+            </div>
           </div>
 
           <button
@@ -339,10 +356,15 @@ export const CalendarioView = () => {
         <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-sky-400" />
-                {eventoSeleccionado ? 'Detalle del Compromiso' : 'Nuevo Compromiso'}
-              </h3>
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <CalendarIcon className="w-5 h-5 text-sky-400" />
+                  {eventoSeleccionado ? 'Detalle del Compromiso' : 'Nuevo Compromiso'}
+                </h3>
+                <p className="text-[11px] text-sky-400 font-semibold mt-0.5">
+                  Sucursal: {sucursalEfectivaNombre}
+                </p>
+              </div>
               <button
                 onClick={() => setModalAbierto(false)}
                 className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
@@ -374,7 +396,8 @@ export const CalendarioView = () => {
                     required
                     value={fechaInicio}
                     onChange={(e) => setFechaInicio(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500"
+                    onClick={(e) => (e.currentTarget as any).showPicker?.()}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-500 [color-scheme:dark] cursor-pointer"
                   />
                 </div>
 
