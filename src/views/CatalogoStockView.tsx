@@ -25,6 +25,8 @@ interface TalleCatalogo {
   orden: number;
 }
 
+const COLORES_SUGERIDOS = ['Negro', 'Blanco', 'Gris', 'Arena', 'Azul', 'Verde'];
+
 export const CatalogoStockView = () => {
   const { perfil, sucursalActiva, empresa } = useAuth();
   const esAdmin = perfil?.rol === 'admin';
@@ -34,21 +36,24 @@ export const CatalogoStockView = () => {
   const [productos, setProductos] = useState<any[]>([]);
   const [productoSeleccionado, setProductoSeleccionado] = useState<any | null>(null);
 
-  const [modoEdicion, setModoEdicion] = useState<'sumar' | 'sobrescribir'>('sumar');
   const [nuevoColor, setNuevoColor] = useState('');
   const [busqueda, setBusqueda] = useState('');
 
   const [mostrarModalImportar, setMostrarModalImportar] = useState(false);
 
+  // Estados Modal Nuevo Producto
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevaCategoriaId, setNuevaCategoriaId] = useState('');
   const [nuevoCosto, setNuevoCosto] = useState('');
   const [nuevoPrecioVenta, setNuevoPrecioVenta] = useState('');
   const [tallesSeleccionadosIds, setTallesSeleccionadosIds] = useState<string[]>([]);
+  const [coloresSeleccionados, setColoresSeleccionados] = useState<string[]>([]);
+  const [colorInputModal, setColorInputModal] = useState('');
   const [creandoProducto, setCreandoProducto] = useState(false);
   const [errorModal, setErrorModal] = useState<string | null>(null);
 
+  // Estados Modal Editar Producto
   const [mostrarModalEditar, setMostrarModalEditar] = useState(false);
   const [editNombre, setEditNombre] = useState('');
   const [editCategoriaId, setEditCategoriaId] = useState('');
@@ -56,10 +61,12 @@ export const CatalogoStockView = () => {
   const [editPrecioVenta, setEditPrecioVenta] = useState('');
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
+  // Estados Modal Eliminar Producto
   const [mostrarModalEliminar, setMostrarModalEliminar] = useState(false);
   const [eliminandoProducto, setEliminandoProducto] = useState(false);
 
-  const [matrizValores, setMatrizValores] = useState<{ [varianteId: string]: number }>({});
+  // Guardamos como string para que el casillero quede vacío en vez de mostrar un 0 fijo
+  const [matrizValores, setMatrizValores] = useState<{ [varianteId: string]: string }>({});
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: 'error' | 'exito'; texto: string } | null>(null);
 
@@ -105,10 +112,8 @@ export const CatalogoStockView = () => {
       }
     }
     if (resTalles.data) {
-      const tallesData = resTalles.data as TalleCatalogo[];
-      setTalles(tallesData);
-      const superiores = tallesData.filter((t) => t.tipo_curva === 'superior').map((t) => t.id);
-      setTallesSeleccionadosIds(superiores);
+      setTalles(resTalles.data as TalleCatalogo[]);
+      setTallesSeleccionadosIds([]);
     }
   };
 
@@ -158,16 +163,16 @@ export const CatalogoStockView = () => {
     );
 
     return {
-      costo: precioEspecifico ? Number(precioEspecifico.precio_costo) : Number(prod?.precio_costo || 0),
-      venta: precioEspecifico ? Number(precioEspecifico.precio_venta) : Number(prod?.precio_venta || 0)
+      costo: precioEspecifico ? Number(precioEspecifico.precio_costo || 0) : Number(prod?.precio_costo || 0),
+      venta: precioEspecifico ? Number(precioEspecifico.precio_venta || 0) : Number(prod?.precio_venta || 0)
     };
   };
 
   const cargarMatrizValores = (prod: any) => {
-    const mapa: { [key: string]: number } = {};
+    const mapa: { [key: string]: string } = {};
     prod.variantes?.forEach((v: any) => {
       const stock = v.stock_sucursal?.find((s: any) => s.sucursal_id === sucursalEfectivaId)?.cantidad || 0;
-      mapa[v.id] = stock;
+      mapa[v.id] = stock > 0 ? String(stock) : '';
     });
     setMatrizValores(mapa);
   };
@@ -190,15 +195,12 @@ export const CatalogoStockView = () => {
     setNuevaCategoriaId(catId);
     setErrorModal(null);
     const curva = obtenerTipoCurvaPorCategoria(catId);
-    const tallesDisponibles = talles.filter((t) => t.tipo_curva === curva);
 
-    if (curva === 'superior') {
-      const comunes = tallesDisponibles
-        .filter((t) => ['S', 'M', 'L', 'XL'].includes(t.etiqueta))
-        .map((t) => t.id);
-      setTallesSeleccionadosIds(comunes.length > 0 ? comunes : tallesDisponibles.map((t) => t.id));
+    if (curva === 'unico') {
+      const unico = talles.filter((t) => t.tipo_curva === 'unico').map((t) => t.id);
+      setTallesSeleccionadosIds(unico);
     } else {
-      setTallesSeleccionadosIds(tallesDisponibles.map((t) => t.id));
+      setTallesSeleccionadosIds([]);
     }
   };
 
@@ -207,6 +209,24 @@ export const CatalogoStockView = () => {
     setTallesSeleccionadosIds((prev) =>
       prev.includes(talleId) ? prev.filter((id) => id !== talleId) : [...prev, talleId]
     );
+  };
+
+  const agregarColorAModal = (valorCrudo: string) => {
+    const limpio = valorCrudo.trim();
+    if (!limpio) return;
+    const capitalizado = limpio.charAt(0).toUpperCase() + limpio.slice(1);
+    const yaExiste = coloresSeleccionados.some(
+      (c) => c.toLowerCase() === capitalizado.toLowerCase()
+    );
+    if (!yaExiste) {
+      setColoresSeleccionados((prev) => [...prev, capitalizado]);
+    }
+    setColorInputModal('');
+    setErrorModal(null);
+  };
+
+  const quitarColorDeModal = (colorAQuitar: string) => {
+    setColoresSeleccionados((prev) => prev.filter((c) => c !== colorAQuitar));
   };
 
   const handleCrearProducto = async (e: React.FormEvent) => {
@@ -221,15 +241,32 @@ export const CatalogoStockView = () => {
       return;
     }
 
-    if (!nuevoNombre.trim() || !nuevaCategoriaId || !nuevoCosto || !nuevoPrecioVenta) {
-      setErrorModal('Completá todos los campos del producto.');
+    if (!nuevoNombre.trim() || !nuevaCategoriaId || !nuevoPrecioVenta) {
+      setErrorModal('Completá el nombre, categoría y precio de venta.');
       return;
     }
 
     if (tallesSeleccionadosIds.length === 0) {
-      setErrorModal('Tenés que seleccionar al menos un talle para este producto.');
+      setErrorModal('Tenés que marcar al menos un talle para este producto.');
       return;
     }
+
+    const listaColoresFinal = [...coloresSeleccionados];
+    if (colorInputModal.trim()) {
+      const limpio = colorInputModal.trim();
+      const cap = limpio.charAt(0).toUpperCase() + limpio.slice(1);
+      if (!listaColoresFinal.some((c) => c.toLowerCase() === cap.toLowerCase())) {
+        listaColoresFinal.push(cap);
+      }
+    }
+
+    if (listaColoresFinal.length === 0) {
+      setErrorModal('Agregá al menos un color para la prenda (ej. Blanco, Negro, Gris).');
+      return;
+    }
+
+    const costoNumerico = nuevoCosto.trim() ? parseFloat(nuevoCosto) : 0;
+    const ventaNumerica = parseFloat(nuevoPrecioVenta);
 
     setCreandoProducto(true);
 
@@ -250,8 +287,8 @@ export const CatalogoStockView = () => {
             empresa_id: empresa.id,
             nombre: nuevoNombre.trim(),
             categoria_id: nuevaCategoriaId,
-            precio_costo: parseFloat(nuevoCosto),
-            precio_venta: parseFloat(nuevoPrecioVenta),
+            precio_costo: costoNumerico,
+            precio_venta: ventaNumerica,
             activo: true
           })
           .select()
@@ -266,49 +303,50 @@ export const CatalogoStockView = () => {
         .upsert({
           producto_id: prodData.id,
           sucursal_id: sucursalEfectivaId,
-          precio_costo: parseFloat(nuevoCosto),
-          precio_venta: parseFloat(nuevoPrecioVenta),
+          precio_costo: costoNumerico,
+          precio_venta: ventaNumerica,
           updated_at: new Date().toISOString()
         }, { onConflict: 'producto_id,sucursal_id' });
 
       const tallesACrear = talles.filter((t) => tallesSeleccionadosIds.includes(t.id));
-      const colorInicial = 'Negro';
 
-      for (const t of tallesACrear) {
-        let { data: varExistente } = await supabase
-          .from('variantes')
-          .select('*')
-          .eq('producto_id', prodData.id)
-          .eq('talle_id', t.id)
-          .ilike('color', colorInicial)
-          .maybeSingle();
-
-        if (!varExistente) {
-          const skuGenerado = `${prodData.nombre.replace(/\s+/g, '').substring(0, 4).toUpperCase()}-${colorInicial.substring(0, 3).toUpperCase()}-${t.etiqueta}-${Date.now().toString().slice(-4)}`;
-
-          const { data: varNueva, error: varErr } = await supabase
+      for (const colorItem of listaColoresFinal) {
+        for (const t of tallesACrear) {
+          let { data: varExistente } = await supabase
             .from('variantes')
-            .insert({
-              producto_id: prodData.id,
-              talle_id: t.id,
-              color: colorInicial,
-              sku_interno: skuGenerado
-            })
-            .select()
-            .single();
+            .select('*')
+            .eq('producto_id', prodData.id)
+            .eq('talle_id', t.id)
+            .ilike('color', colorItem)
+            .maybeSingle();
 
-          if (varErr) throw varErr;
-          varExistente = varNueva;
-        }
+          if (!varExistente) {
+            const skuGenerado = `${prodData.nombre.replace(/\s+/g, '').substring(0, 4).toUpperCase()}-${colorItem.substring(0, 3).toUpperCase()}-${t.etiqueta}-${Date.now().toString().slice(-4)}`;
 
-        if (varExistente) {
-          await supabase
-            .from('stock_sucursal')
-            .upsert({
-              variante_id: varExistente.id,
-              sucursal_id: sucursalEfectivaId,
-              cantidad: 0
-            }, { onConflict: 'variante_id,sucursal_id' });
+            const { data: varNueva, error: varErr } = await supabase
+              .from('variantes')
+              .insert({
+                producto_id: prodData.id,
+                talle_id: t.id,
+                color: colorItem,
+                sku_interno: skuGenerado
+              })
+              .select()
+              .single();
+
+            if (varErr) throw varErr;
+            varExistente = varNueva;
+          }
+
+          if (varExistente) {
+            await supabase
+              .from('stock_sucursal')
+              .upsert({
+                variante_id: varExistente.id,
+                sucursal_id: sucursalEfectivaId,
+                cantidad: 0
+              }, { onConflict: 'variante_id,sucursal_id' });
+          }
         }
       }
 
@@ -316,6 +354,8 @@ export const CatalogoStockView = () => {
       setNuevoNombre('');
       setNuevoCosto('');
       setNuevoPrecioVenta('');
+      setColoresSeleccionados([]);
+      setColorInputModal('');
       await cargarProductos();
       setProductoSeleccionado(prodData);
       setMensaje({ tipo: 'exito', texto: `¡Prenda registrada para ${sucursalEfectivaNombre}!` });
@@ -331,7 +371,7 @@ export const CatalogoStockView = () => {
     const precios = obtenerPreciosSucursal(productoSeleccionado);
     setEditNombre(productoSeleccionado.nombre);
     setEditCategoriaId(productoSeleccionado.categoria_id);
-    setEditCosto(precios.costo.toString());
+    setEditCosto(precios.costo > 0 ? precios.costo.toString() : '');
     setEditPrecioVenta(precios.venta.toString());
     setMostrarModalEditar(true);
   };
@@ -342,6 +382,9 @@ export const CatalogoStockView = () => {
 
     setGuardandoEdicion(true);
     setMensaje(null);
+
+    const costoEditado = editCosto.trim() ? parseFloat(editCosto) : 0;
+    const ventaEditada = parseFloat(editPrecioVenta);
 
     try {
       const { error: errProd } = await supabase
@@ -359,8 +402,8 @@ export const CatalogoStockView = () => {
         .upsert({
           producto_id: productoSeleccionado.id,
           sucursal_id: sucursalEfectivaId,
-          precio_costo: parseFloat(editCosto),
-          precio_venta: parseFloat(editPrecioVenta),
+          precio_costo: costoEditado,
+          precio_venta: ventaEditada,
           updated_at: new Date().toISOString()
         }, { onConflict: 'producto_id,sucursal_id' });
 
@@ -373,7 +416,7 @@ export const CatalogoStockView = () => {
           usuarioId: perfil?.id,
           usuarioNombre: `${perfil?.nombre || ''} ${perfil?.apellido || ''}`.trim(),
           accion: 'PRECIO_PRODUCTO_EDITADO',
-          detalle: `Producto "${editNombre.trim()}" actualizado en ${sucursalEfectivaNombre} (Venta: $${Number(editPrecioVenta).toLocaleString()}).`
+          detalle: `Producto "${editNombre.trim()}" actualizado en ${sucursalEfectivaNombre} (Venta: $${Number(ventaEditada).toLocaleString()}).`
         });
       }
 
@@ -447,7 +490,8 @@ export const CatalogoStockView = () => {
   const handleAgregarColor = async () => {
     if (!productoSeleccionado || !nuevoColor.trim() || !sucursalEfectivaId) return;
 
-    const colorFormateado = nuevoColor.trim();
+    const limpio = nuevoColor.trim();
+    const colorFormateado = limpio.charAt(0).toUpperCase() + limpio.slice(1);
     const tallesActualesIds = Array.from(
       new Set(productoSeleccionado.variantes?.map((v: any) => v.talle_id) || [])
     ) as string[];
@@ -495,6 +539,38 @@ export const CatalogoStockView = () => {
     await cargarProductos();
   };
 
+  const handleEliminarColorDeMatriz = async (colorAEliminar: string) => {
+    if (!productoSeleccionado || !sucursalEfectivaId || !esAdmin) return;
+    const confirmar = window.confirm(`¿Quitar el color "${colorAEliminar}" de esta prenda en ${sucursalEfectivaNombre}?`);
+    if (!confirmar) return;
+
+    const variantesDelColor = (productoSeleccionado.variantes || []).filter(
+      (v: any) => v.color.toLowerCase() === colorAEliminar.toLowerCase()
+    );
+    const ids = variantesDelColor.map((v: any) => v.id);
+
+    if (ids.length > 0) {
+      await supabase
+        .from('stock_sucursal')
+        .delete()
+        .in('variante_id', ids)
+        .eq('sucursal_id', sucursalEfectivaId);
+
+      for (const vid of ids) {
+        const { count } = await supabase
+          .from('stock_sucursal')
+          .select('*', { count: 'exact', head: true })
+          .eq('variante_id', vid);
+
+        if (!count || count === 0) {
+          await supabase.from('variantes').delete().eq('id', vid);
+        }
+      }
+    }
+
+    await cargarProductos();
+  };
+
   const handleGuardarStock = async () => {
     if (!productoSeleccionado || !sucursalEfectivaId) return;
     setGuardando(true);
@@ -504,15 +580,10 @@ export const CatalogoStockView = () => {
       const cambiosLog: string[] = [];
 
       for (const variante of productoSeleccionado.variantes || []) {
-        const valorInput = matrizValores[variante.id] ?? 0;
+        const textoValor = matrizValores[variante.id] ?? '';
+        const valorInput = textoValor === '' ? 0 : parseInt(textoValor, 10) || 0;
         const stockActual = variante.stock_sucursal?.find((s: any) => s.sucursal_id === sucursalEfectivaId)?.cantidad || 0;
-
-        let nuevoStock = valorInput;
-        if (modoEdicion === 'sumar') {
-          nuevoStock = stockActual + valorInput;
-        }
-
-        const finalCalculado = Math.max(0, nuevoStock);
+        const finalCalculado = Math.max(0, valorInput);
 
         if (finalCalculado !== stockActual) {
           cambiosLog.push(
@@ -555,7 +626,13 @@ export const CatalogoStockView = () => {
   );
 
   const coloresAgrupados = Array.from(
-    new Set(productoSeleccionado?.variantes?.map((v: any) => v.color) || [])
+    new Set(
+      (productoSeleccionado?.variantes || [])
+        .filter((v: any) =>
+          v.stock_sucursal?.some((s: any) => s.sucursal_id === sucursalEfectivaId)
+        )
+        .map((v: any) => v.color)
+    )
   ) as string[];
 
   const mapaTalles = new Map<string, TalleCatalogo>();
@@ -603,6 +680,8 @@ export const CatalogoStockView = () => {
               onClick={() => {
                 setMostrarModalNuevo(true);
                 setErrorModal(null);
+                setColoresSeleccionados([]);
+                setColorInputModal('');
                 if (categorias.length > 0) {
                   handleCambiarCategoriaModal(categorias[0].id);
                 }
@@ -650,7 +729,7 @@ export const CatalogoStockView = () => {
               const pSucursal = obtenerPreciosSucursal(prod);
               const margen = pSucursal.costo > 0 
                 ? Math.round(((pSucursal.venta - pSucursal.costo) / pSucursal.costo) * 100) 
-                : 0;
+                : null;
 
               return (
                 <div
@@ -676,10 +755,16 @@ export const CatalogoStockView = () => {
 
                   {esAdmin && (
                     <div className="mt-2 pt-2 border-t border-slate-900 flex justify-between text-[10px] text-slate-500 font-medium">
-                      <span>Costo ({sucursalEfectivaNombre}): ${pSucursal.costo.toLocaleString()}</span>
-                      <span className="text-sky-400 font-bold">
-                        Margen: +{margen}%
+                      <span>
+                        {pSucursal.costo > 0
+                          ? `Costo (${sucursalEfectivaNombre}): $${pSucursal.costo.toLocaleString()}`
+                          : 'Costo: Sin cargar'}
                       </span>
+                      {margen !== null && (
+                        <span className="text-sky-400 font-bold">
+                          Margen: +{margen}%
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -691,75 +776,62 @@ export const CatalogoStockView = () => {
         <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-6">
           {productoSeleccionado ? (
             <>
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-black text-white">
-                      Matriz de Stock: {productoSeleccionado.nombre}
-                    </h2>
-                    
-                    {esAdmin && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={abrirModalEditar}
-                          title={`Editar precios para ${sucursalEfectivaNombre}`}
-                          className="p-1.5 bg-slate-800 hover:bg-sky-500 hover:text-slate-950 text-slate-300 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setMostrarModalEliminar(true)}
-                          title={`Eliminar prenda de ${sucursalEfectivaNombre}`}
-                          className="p-1.5 bg-slate-800 hover:bg-rose-600 hover:text-white text-rose-400 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-4 mt-1 text-xs text-slate-400">
-                    <span>Venta actual: <strong className="text-emerald-400 font-mono">${preciosSeleccionado.venta.toLocaleString()}</strong></span>
-                    {esAdmin && (
-                      <span>Costo taller: <strong className="text-slate-200 font-mono">${preciosSeleccionado.costo.toLocaleString()}</strong></span>
-                    )}
-                    <span className="text-slate-500">Navegá casilleros con <kbd className="px-1 py-0.5 bg-slate-800 rounded text-slate-300">Tab</kbd></span>
-                  </div>
+              <div className="border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-black text-white">
+                    Matriz de Stock: {productoSeleccionado.nombre}
+                  </h2>
+                  
+                  {esAdmin && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={abrirModalEditar}
+                        title={`Editar precios para ${sucursalEfectivaNombre}`}
+                        className="p-1.5 bg-slate-800 hover:bg-sky-500 hover:text-slate-950 text-slate-300 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setMostrarModalEliminar(true)}
+                        title={`Eliminar prenda de ${sucursalEfectivaNombre}`}
+                        className="p-1.5 bg-slate-800 hover:bg-rose-600 hover:text-white text-rose-400 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
-                  <button
-                    onClick={() => setModoEdicion('sumar')}
-                    className={`px-3 py-1.5 rounded-md font-bold transition-all cursor-pointer ${
-                      modoEdicion === 'sumar'
-                        ? 'bg-sky-500 text-slate-950 shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Modo Sumar (+)
-                  </button>
-                  <button
-                    onClick={() => setModoEdicion('sobrescribir')}
-                    className={`px-3 py-1.5 rounded-md font-bold transition-all cursor-pointer ${
-                      modoEdicion === 'sobrescribir'
-                        ? 'bg-amber-500 text-slate-950 shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Modo Sobrescribir (=)
-                  </button>
+                <div className="flex flex-wrap gap-4 mt-1 text-xs text-slate-400">
+                  <span>Venta actual: <strong className="text-emerald-400 font-mono">${preciosSeleccionado.venta.toLocaleString()}</strong></span>
+                  {esAdmin && (
+                    <span>
+                      Costo:{' '}
+                      <strong className="text-slate-200 font-mono">
+                        {preciosSeleccionado.costo > 0 ? `$${preciosSeleccionado.costo.toLocaleString()}` : 'Sin cargar'}
+                      </strong>
+                    </span>
+                  )}
+                  <span className="text-slate-500">Navegá casilleros con <kbd className="px-1 py-0.5 bg-slate-800 rounded text-slate-300">Tab</kbd></span>
                 </div>
               </div>
 
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Agregar color (ej. Negro, Washed, White, Gris)"
+                  placeholder="Agregar otro color (ej. Blanco, Washed, Gris)"
                   value={nuevoColor}
                   onChange={(e) => setNuevoColor(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAgregarColor();
+                    }
+                  }}
                   className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white flex-1 focus:outline-none focus:border-sky-500"
                 />
                 <button
+                  type="button"
                   onClick={handleAgregarColor}
                   className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-2 rounded-lg text-xs cursor-pointer transition-colors"
                 >
@@ -780,40 +852,64 @@ export const CatalogoStockView = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {coloresAgrupados.map((color) => (
-                      <tr key={color} className="hover:bg-slate-800/20">
-                        <td className="px-4 py-3 font-bold text-white capitalize">
-                          {color}
+                    {coloresAgrupados.length === 0 ? (
+                      <tr>
+                        <td colSpan={tallesDeLaPrenda.length + 1} className="text-center py-6 text-slate-500">
+                          Agregá un color arriba para comenzar a cargar el stock.
                         </td>
-                        {tallesDeLaPrenda.map((t) => {
-                          const variante = productoSeleccionado.variantes?.find(
-                            (v: any) => v.color.toLowerCase() === color.toLowerCase() && v.talle_id === t.id
-                          );
-
-                          if (!variante) {
-                            return <td key={t.id} className="text-center text-slate-600">-</td>;
-                          }
-
-                          return (
-                            <td key={t.id} className="px-2 py-2 text-center">
-                              <input
-                                type="number"
-                                min="0"
-                                value={matrizValores[variante.id] ?? 0}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value) || 0;
-                                  setMatrizValores({
-                                    ...matrizValores,
-                                    [variante.id]: val
-                                  });
-                                }}
-                                className="w-16 bg-slate-950 border border-slate-700 focus:border-sky-500 rounded px-2 py-1.5 text-center text-white font-mono font-bold text-xs"
-                              />
-                            </td>
-                          );
-                        })}
                       </tr>
-                    ))}
+                    ) : (
+                      coloresAgrupados.map((color) => (
+                        <tr key={color} className="hover:bg-slate-800/20">
+                          <td className="px-4 py-3 font-bold text-white capitalize">
+                            <div className="flex items-center gap-2">
+                              <span>{color}</span>
+                              {esAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleEliminarColorDeMatriz(color)}
+                                  title={`Quitar color ${color}`}
+                                  className="text-slate-600 hover:text-rose-400 cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          {tallesDeLaPrenda.map((t) => {
+                            const variante = productoSeleccionado.variantes?.find(
+                              (v: any) => v.color.toLowerCase() === color.toLowerCase() && v.talle_id === t.id
+                            );
+
+                            if (!variante) {
+                              return <td key={t.id} className="text-center text-slate-600">-</td>;
+                            }
+
+                            return (
+                              <td key={t.id} className="px-2 py-2 text-center">
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  placeholder="0"
+                                  value={matrizValores[variante.id] ?? ''}
+                                  onChange={(e) => {
+                                    // Solo dígitos y sin ceros a la izquierda (ej. "02" -> "2")
+                                    const soloDigitos = e.target.value.replace(/\D/g, '');
+                                    const limpio = soloDigitos === '' ? '' : String(parseInt(soloDigitos, 10));
+                                    setMatrizValores({
+                                      ...matrizValores,
+                                      [variante.id]: limpio
+                                    });
+                                  }}
+                                  className="w-16 bg-slate-950 border border-slate-700 focus:border-sky-500 rounded px-2 py-1.5 text-center text-white placeholder-slate-600 font-mono font-bold text-xs focus:outline-none"
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -837,6 +933,7 @@ export const CatalogoStockView = () => {
         </div>
       </div>
 
+      {/* MODAL EDITAR PRODUCTO */}
       {mostrarModalEditar && esAdmin && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
@@ -851,7 +948,7 @@ export const CatalogoStockView = () => {
               </div>
               <button
                 onClick={() => setMostrarModalEditar(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -884,11 +981,13 @@ export const CatalogoStockView = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block uppercase font-bold text-slate-400 mb-1">Costo ({sucursalEfectivaNombre}) ($)</label>
+                  <label className="block uppercase font-bold text-slate-400 mb-1">
+                    Costo <span className="text-slate-500 font-normal">(Opcional)</span>
+                  </label>
                   <input
                     type="number"
                     step="0.01"
-                    required
+                    placeholder="Opcional"
                     value={editCosto}
                     onChange={(e) => setEditCosto(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500"
@@ -896,7 +995,7 @@ export const CatalogoStockView = () => {
                 </div>
 
                 <div>
-                  <label className="block uppercase font-bold text-slate-400 mb-1">Precio Venta ({sucursalEfectivaNombre}) ($)</label>
+                  <label className="block uppercase font-bold text-slate-400 mb-1">Precio Venta ($)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -930,6 +1029,7 @@ export const CatalogoStockView = () => {
         </div>
       )}
 
+      {/* MODAL ELIMINAR PRODUCTO */}
       {mostrarModalEliminar && esAdmin && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
@@ -967,16 +1067,26 @@ export const CatalogoStockView = () => {
         </div>
       )}
 
+      {/* MODAL NUEVO PRODUCTO */}
       {mostrarModalNuevo && esAdmin && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
-            <div className="border-b border-slate-800 pb-3">
-              <h3 className="text-base font-black uppercase text-white">
-                Crear / Asignar Prenda
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Se creará o asociará la prenda definiendo stock y precios para <strong className="text-sky-400">{sucursalEfectivaNombre}</strong>.
-              </p>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl my-auto">
+            <div className="flex justify-between items-start border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-black uppercase text-white">
+                  Crear / Asignar Prenda
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Definí talles, colores y precio para <strong className="text-sky-400">{sucursalEfectivaNombre}</strong>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMostrarModalNuevo(false)}
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             {errorModal && (
@@ -1012,6 +1122,7 @@ export const CatalogoStockView = () => {
                 </select>
               </div>
 
+              {/* Talles desmarcados por defecto */}
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <label className="uppercase font-bold text-slate-400">
@@ -1065,14 +1176,91 @@ export const CatalogoStockView = () => {
                 )}
               </div>
 
+              {/* Selector de Colores integrado en el modal */}
+              <div className="space-y-2">
+                <label className="block uppercase font-bold text-slate-400">
+                  Colores de la Prenda ({coloresSeleccionados.length})
+                </label>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ej. Blanco, Negro, Washed, Arena..."
+                    value={colorInputModal}
+                    onChange={(e) => setColorInputModal(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        agregarColorAModal(colorInputModal);
+                      }
+                    }}
+                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => agregarColorAModal(colorInputModal)}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg cursor-pointer transition-colors"
+                  >
+                    + Agregar
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] text-slate-500">Rápidos:</span>
+                  {COLORES_SUGERIDOS.map((sug) => {
+                    const activo = coloresSeleccionados.some(
+                      (c) => c.toLowerCase() === sug.toLowerCase()
+                    );
+                    return (
+                      <button
+                        key={sug}
+                        type="button"
+                        onClick={() =>
+                          activo ? quitarColorDeModal(sug) : agregarColorAModal(sug)
+                        }
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold border cursor-pointer transition-colors ${
+                          activo
+                            ? 'bg-sky-500/20 border-sky-500 text-sky-400'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {activo ? `✓ ${sug}` : `+ ${sug}`}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {coloresSeleccionados.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {coloresSeleccionados.map((col) => (
+                      <span
+                        key={col}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/15 border border-sky-500/40 text-sky-300 font-bold text-[11px]"
+                      >
+                        {col}
+                        <button
+                          type="button"
+                          onClick={() => quitarColorDeModal(col)}
+                          className="text-sky-400 hover:text-white cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Precios (Costo Opcional + Precio Venta Obligatorio) */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block uppercase font-bold text-slate-400 mb-1">Costo ({sucursalEfectivaNombre}) ($)</label>
+                  <label className="block uppercase font-bold text-slate-400 mb-1">
+                    Costo <span className="text-slate-500 font-normal">(Opcional)</span>
+                  </label>
                   <input
                     type="number"
                     step="0.01"
-                    required
-                    placeholder="Ej. 12000"
+                    placeholder="Dejar vacío si no se sabe"
                     value={nuevoCosto}
                     onChange={(e) => setNuevoCosto(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-sky-500"
