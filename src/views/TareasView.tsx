@@ -9,7 +9,11 @@ import {
   Calendar,
   Pencil,
   Trash2,
-  X
+  X,
+  MessageCircle,
+  ThumbsUp,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 
 // Helper para obtener fecha local en formato YYYY-MM-DD sin desfase horario
@@ -29,12 +33,29 @@ const formatearFechaAR = (fechaISO: string) => {
   return `${partes[2]}/${partes[1]}/${partes[0]}`;
 };
 
+const normalizarTelefonoAR = (tel: string) => {
+  const digitos = tel.replace(/\D/g, '');
+  if (!digitos) return '';
+  if (digitos.startsWith('54')) return digitos;
+  return `549${digitos.replace(/^0+/, '')}`;
+};
+
 export const TareasView = () => {
-  const { perfil, empresa } = useAuth();
+  const { perfil, empresa, sucursalActiva } = useAuth();
   const [tabActiva, setTabActiva] = useState<'tareas' | 'novedades'>('tareas');
   const [tareas, setTareas] = useState<any[]>([]);
   const [novedades, setNovedades] = useState<any[]>([]);
   const [equipo, setEquipo] = useState<any[]>([]);
+
+  // Banner de notificación WhatsApp tras asignar tarea
+  const [avisoWhatsapp, setAvisoWhatsapp] = useState<{
+    responsableNombre: string;
+    telefono: string | null;
+    titulo: string;
+    descripcion: string;
+    fechaLimite: string;
+    prioridad: string;
+  } | null>(null);
 
   // Modal crear / editar tarea
   const [mostrarModalTarea, setMostrarModalTarea] = useState(false);
@@ -61,7 +82,7 @@ export const TareasView = () => {
   const cargarEquipo = async () => {
     const { data } = await supabase
       .from('perfiles')
-      .select('id, nombre, apellido, rol')
+      .select('id, nombre, apellido, rol, telefono_whatsapp')
       .eq('empresa_id', empresa?.id)
       .eq('activo', true);
     if (data) setEquipo(data);
@@ -71,7 +92,7 @@ export const TareasView = () => {
     const [resT, resN] = await Promise.all([
       supabase
         .from('tareas_equipo')
-        .select('*, perfiles:responsable_id(nombre, apellido), creador:creador_id(nombre)')
+        .select('*, perfiles:responsable_id(id, nombre, apellido, telefono_whatsapp), creador:creador_id(nombre)')
         .eq('empresa_id', empresa?.id)
         .order('created_at', { ascending: false }),
       supabase
@@ -83,6 +104,35 @@ export const TareasView = () => {
 
     if (resT.data) setTareas(resT.data);
     if (resN.data) setNovedades(resN.data);
+  };
+
+  const construirLinkWhatsappTarea = (datos: {
+    responsableNombre: string;
+    telefono: string;
+    titulo: string;
+    descripcion?: string | null;
+    fechaLimite?: string | null;
+    prioridad?: string;
+  }) => {
+    const telLimpio = normalizarTelefonoAR(datos.telefono);
+    const nombreLocal = sucursalActiva?.nombre || empresa?.nombre || 'el local';
+    const urlTareas = `${window.location.origin}/tareas`;
+
+    const lineas = [
+      `Hola ${datos.responsableNombre}! 👋 Te asignaron una nueva tarea en *GEMI* (${nombreLocal}):`,
+      ``,
+      `📌 *${datos.titulo}*`,
+      datos.descripcion ? `📝 Detalle: ${datos.descripcion}` : null,
+      datos.fechaLimite ? `📅 Fecha límite: ${formatearFechaAR(datos.fechaLimite)}` : null,
+      datos.prioridad === 'urgente' || datos.prioridad === 'alta'
+        ? `🚨 Prioridad: ${datos.prioridad.toUpperCase()}`
+        : null,
+      ``,
+      `Por favor, entrá a la sección *Tareas* y tocá *"Confirmar recibido"* para avisar que ya la viste:`,
+      urlTareas
+    ].filter((l) => l !== null);
+
+    return `https://wa.me/${telLimpio}?text=${encodeURIComponent(lineas.join('\n'))}`;
   };
 
   const abrirModalNuevaTarea = () => {
@@ -109,11 +159,14 @@ export const TareasView = () => {
     e.preventDefault();
     if (!perfil || !empresa) return;
 
+    const idDestino = responsableId || perfil.id;
+    const personaDestino = equipo.find((m) => m.id === idDestino);
+
     if (tareaEditandoId) {
       await supabase
         .from('tareas_equipo')
         .update({
-          responsable_id: responsableId || perfil.id,
+          responsable_id: idDestino,
           titulo: tituloTarea.trim(),
           descripcion: descTarea.trim() || null,
           prioridad,
@@ -125,13 +178,25 @@ export const TareasView = () => {
       await supabase.from('tareas_equipo').insert({
         empresa_id: empresa.id,
         creador_id: perfil.id,
-        responsable_id: responsableId || perfil.id,
+        responsable_id: idDestino,
         titulo: tituloTarea.trim(),
         descripcion: descTarea.trim() || null,
         prioridad,
         fecha_limite: fechaLimite || null,
         estado: 'pendiente'
       });
+
+      // Si la tarea se asignó a otro miembro del equipo, mostramos el banner para enviar WhatsApp
+      if (idDestino !== perfil.id && personaDestino) {
+        setAvisoWhatsapp({
+          responsableNombre: personaDestino.nombre,
+          telefono: personaDestino.telefono_whatsapp || null,
+          titulo: tituloTarea.trim(),
+          descripcion: descTarea.trim(),
+          fechaLimite,
+          prioridad
+        });
+      }
     }
 
     setMostrarModalTarea(false);
@@ -139,6 +204,18 @@ export const TareasView = () => {
     setTituloTarea('');
     setDescTarea('');
     setFechaLimite('');
+    cargarDatos();
+  };
+
+  const confirmarRecepcionTarea = async (id: string) => {
+    await supabase
+      .from('tareas_equipo')
+      .update({
+        confirmada_en: new Date().toISOString(),
+        estado: 'en_proceso',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
     cargarDatos();
   };
 
@@ -207,6 +284,64 @@ export const TareasView = () => {
         </div>
       </div>
 
+      {/* Banner de Aviso por WhatsApp (estilo comprobante de venta) */}
+      {avisoWhatsapp && (
+        <div className="bg-emerald-950/50 border border-emerald-500/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 shrink-0">
+              <MessageCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-black uppercase text-emerald-300">
+                ¡Tarea asignada a {avisoWhatsapp.responsableNombre}!
+              </h4>
+              {avisoWhatsapp.telefono ? (
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Enviá el aviso por WhatsApp para que <strong>{avisoWhatsapp.responsableNombre}</strong> la vea al instante y confirme que la recibió.
+                </p>
+              ) : (
+                <p className="text-xs text-amber-300 mt-0.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    {avisoWhatsapp.responsableNombre} todavía no tiene WhatsApp cargado (podés agregarlo en <strong>Panel Admin → Personal</strong>).
+                  </span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {avisoWhatsapp.telefono && (
+              <a
+                href={construirLinkWhatsappTarea({
+                  responsableNombre: avisoWhatsapp.responsableNombre,
+                  telefono: avisoWhatsapp.telefono,
+                  titulo: avisoWhatsapp.titulo,
+                  descripcion: avisoWhatsapp.descripcion,
+                  fechaLimite: avisoWhatsapp.fechaLimite,
+                  prioridad: avisoWhatsapp.prioridad
+                })}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setAvisoWhatsapp(null)}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2 rounded-xl text-xs inline-flex items-center gap-1.5 transition-colors shadow-md"
+              >
+                <MessageCircle className="w-4 h-4" />
+                Enviar aviso por WhatsApp
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => setAvisoWhatsapp(null)}
+              className="p-2 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+              title="Cerrar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Selector de Solapa */}
       <div className="flex gap-2 border-b border-slate-800 text-xs">
         <button
@@ -255,88 +390,136 @@ export const TareasView = () => {
                   {tareasCol.length === 0 ? (
                     <p className="text-slate-600 text-[11px] text-center py-6">Sin tareas en esta etapa</p>
                   ) : (
-                    tareasCol.map((tarea) => (
-                      <div
-                        key={tarea.id}
-                        className="bg-slate-950 border border-slate-800/90 rounded-xl p-3 space-y-2.5 shadow-sm"
-                      >
-                        <div className="flex justify-between items-start gap-2">
-                          <h4 className="text-xs font-bold text-white leading-snug">{tarea.titulo}</h4>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                              tarea.prioridad === 'urgente' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
-                              tarea.prioridad === 'alta' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' :
-                              'bg-slate-800 text-slate-400'
-                            }`}>
-                              {tarea.prioridad}
+                    tareasCol.map((tarea) => {
+                      const esMiTarea = tarea.responsable_id === perfil?.id;
+                      const asignadaAOtro = tarea.responsable_id && tarea.responsable_id !== tarea.creador_id;
+                      const telResponsable = tarea.perfiles?.telefono_whatsapp;
+
+                      return (
+                        <div
+                          key={tarea.id}
+                          className="bg-slate-950 border border-slate-800/90 rounded-xl p-3 space-y-2.5 shadow-sm"
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <h4 className="text-xs font-bold text-white leading-snug">{tarea.titulo}</h4>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                                tarea.prioridad === 'urgente' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
+                                tarea.prioridad === 'alta' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' :
+                                'bg-slate-800 text-slate-400'
+                              }`}>
+                                {tarea.prioridad}
+                              </span>
+                              {telResponsable && colEstado !== 'completada' && (
+                                <a
+                                  href={construirLinkWhatsappTarea({
+                                    responsableNombre: tarea.perfiles?.nombre || 'Equipo',
+                                    telefono: telResponsable,
+                                    titulo: tarea.titulo,
+                                    descripcion: tarea.descripcion,
+                                    fechaLimite: tarea.fecha_limite,
+                                    prioridad: tarea.prioridad
+                                  })}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={`Reenviar aviso por WhatsApp a ${tarea.perfiles?.nombre}`}
+                                  className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded"
+                                >
+                                  <MessageCircle className="w-3 h-3" />
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => abrirModalEditarTarea(tarea)}
+                                title="Editar tarea o fecha"
+                                className="p-1 text-slate-400 hover:text-sky-400 rounded hover:bg-slate-900 cursor-pointer"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => eliminarTarea(tarea.id)}
+                                title="Eliminar tarea"
+                                className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-900 cursor-pointer"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {tarea.descripcion && (
+                            <p className="text-[11px] text-slate-400 line-clamp-2">{tarea.descripcion}</p>
+                          )}
+
+                          {/* Estado de confirmación de lectura */}
+                          {asignadaAOtro && colEstado !== 'completada' && (
+                            <div>
+                              {tarea.confirmada_en ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Confirmada por {tarea.perfiles?.nombre}
+                                </span>
+                              ) : esMiTarea ? (
+                                <button
+                                  type="button"
+                                  onClick={() => confirmarRecepcionTarea(tarea.id)}
+                                  className="w-full py-1.5 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                                >
+                                  <ThumbsUp className="w-3.5 h-3.5" /> Confirmar recibido
+                                </button>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
+                                  Esperando confirmación de {tarea.perfiles?.nombre}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-900">
+                            <span className="flex items-center gap-1 text-slate-300 font-semibold">
+                              <User className="w-3 h-3 text-sky-400" />
+                              {tarea.perfiles?.nombre || 'Sin asignar'}
                             </span>
                             <button
                               type="button"
                               onClick={() => abrirModalEditarTarea(tarea)}
-                              title="Editar tarea o fecha"
-                              className="p-1 text-slate-400 hover:text-sky-400 rounded hover:bg-slate-900 cursor-pointer"
+                              title="Clic para cambiar fecha límite"
+                              className="flex items-center gap-1 text-slate-300 hover:text-sky-400 cursor-pointer font-mono"
                             >
-                              <Pencil className="w-3 h-3" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => eliminarTarea(tarea.id)}
-                              title="Eliminar tarea"
-                              className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-900 cursor-pointer"
-                            >
-                              <Trash2 className="w-3 h-3" />
+                              <Calendar className="w-3 h-3 text-sky-400" />
+                              {tarea.fecha_limite ? formatearFechaAR(tarea.fecha_limite) : 'Sin fecha'}
                             </button>
                           </div>
-                        </div>
 
-                        {tarea.descripcion && (
-                          <p className="text-[11px] text-slate-400 line-clamp-2">{tarea.descripcion}</p>
-                        )}
-
-                        <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-900">
-                          <span className="flex items-center gap-1 text-slate-300 font-semibold">
-                            <User className="w-3 h-3 text-sky-400" />
-                            {tarea.perfiles?.nombre || 'Sin asignar'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => abrirModalEditarTarea(tarea)}
-                            title="Clic para cambiar fecha límite"
-                            className="flex items-center gap-1 text-slate-300 hover:text-sky-400 cursor-pointer font-mono"
-                          >
-                            <Calendar className="w-3 h-3 text-sky-400" />
-                            {tarea.fecha_limite ? formatearFechaAR(tarea.fecha_limite) : 'Sin fecha'}
-                          </button>
+                          <div className="flex justify-end gap-1.5 pt-1">
+                            {colEstado !== 'pendiente' && (
+                              <button
+                                onClick={() => cambiarEstadoTarea(tarea.id, 'pendiente')}
+                                className="text-[10px] text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-900 cursor-pointer"
+                              >
+                                ← Mover
+                              </button>
+                            )}
+                            {colEstado !== 'en_proceso' && (
+                              <button
+                                onClick={() => cambiarEstadoTarea(tarea.id, 'en_proceso')}
+                                className="text-[10px] text-sky-400 hover:bg-sky-500/10 px-1.5 py-0.5 rounded bg-slate-900 cursor-pointer"
+                              >
+                                En Progreso
+                              </button>
+                            )}
+                            {colEstado !== 'completada' && (
+                              <button
+                                onClick={() => cambiarEstadoTarea(tarea.id, 'completada')}
+                                className="text-[10px] text-emerald-400 hover:bg-emerald-500/10 px-1.5 py-0.5 rounded bg-slate-900 cursor-pointer font-bold"
+                              >
+                                ✓ Listo
+                              </button>
+                            )}
+                          </div>
                         </div>
-
-                        <div className="flex justify-end gap-1.5 pt-1">
-                          {colEstado !== 'pendiente' && (
-                            <button
-                              onClick={() => cambiarEstadoTarea(tarea.id, 'pendiente')}
-                              className="text-[10px] text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-900 cursor-pointer"
-                            >
-                              ← Mover
-                            </button>
-                          )}
-                          {colEstado !== 'en_proceso' && (
-                            <button
-                              onClick={() => cambiarEstadoTarea(tarea.id, 'en_proceso')}
-                              className="text-[10px] text-sky-400 hover:bg-sky-500/10 px-1.5 py-0.5 rounded bg-slate-900 cursor-pointer"
-                            >
-                              En Progreso
-                            </button>
-                          )}
-                          {colEstado !== 'completada' && (
-                            <button
-                              onClick={() => cambiarEstadoTarea(tarea.id, 'completada')}
-                              className="text-[10px] text-emerald-400 hover:bg-emerald-500/10 px-1.5 py-0.5 rounded bg-slate-900 cursor-pointer font-bold"
-                            >
-                              ✓ Listo
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -426,7 +609,9 @@ export const TareasView = () => {
                 >
                   <option value="">Yo mismo</option>
                   {equipo.map((m) => (
-                    <option key={m.id} value={m.id}>{m.nombre} {m.apellido || ''}</option>
+                    <option key={m.id} value={m.id}>
+                      {m.nombre} {m.apellido || ''} {m.telefono_whatsapp ? '📲' : ''}
+                    </option>
                   ))}
                 </select>
               </div>

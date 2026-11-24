@@ -26,7 +26,8 @@ import {
   WalletCards,
   Ban,
   KeyRound,
-  History
+  History,
+  Phone
 } from 'lucide-react';
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -57,6 +58,10 @@ export const AdminView = () => {
   const [todosLosTraspasos, setTodosLosTraspasos] = useState<any[]>([]);
   const [turnosCaja, setTurnosCaja] = useState<any[]>([]);
   const [logsAuditoria, setLogsAuditoria] = useState<any[]>([]);
+
+  // Edición de WhatsApp del personal
+  const [editandoWhatsappUserId, setEditandoWhatsappUserId] = useState<string | null>(null);
+  const [whatsappTemp, setWhatsappTemp] = useState<string>('');
 
   // Configuración de seguridad de descuentos
   const [maxDescuentoPct, setMaxDescuentoPct] = useState<number>(10);
@@ -327,6 +332,22 @@ export const AdminView = () => {
     }
   };
 
+  const handleGuardarWhatsappUsuario = async (userId: string) => {
+    const limpio = whatsappTemp.replace(/[^\d+]/g, '').trim();
+    const { error } = await supabase
+      .from('perfiles')
+      .update({ telefono_whatsapp: limpio || null })
+      .eq('id', userId);
+
+    if (error) {
+      alert('Error guardando WhatsApp: ' + error.message);
+    } else {
+      setEditandoWhatsappUserId(null);
+      setWhatsappTemp('');
+      cargarDatosAdmin();
+    }
+  };
+
   const handleGuardarMetodoPago = async () => {
     if (!ventaSeleccionada || !nuevoMetodoPago) return;
     const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
@@ -367,7 +388,6 @@ export const AdminView = () => {
     const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
 
     try {
-      // 1. Devolver stock de cada prenda
       for (const det of ventaSeleccionada.ventas_detalle || []) {
         if (det.variante_id) {
           const { data: stockAct } = await supabase
@@ -393,7 +413,6 @@ export const AdminView = () => {
         }
       }
 
-      // 2. Marcar venta como anulada
       const { error } = await supabase
         .from('ventas')
         .update({ estado: 'anulada' })
@@ -401,7 +420,6 @@ export const AdminView = () => {
 
       if (error) throw error;
 
-      // 3. Registrar en auditoría
       if (empresaIdEfectivo) {
         await registrarAuditoria({
           empresaId: empresaIdEfectivo,
@@ -1055,7 +1073,7 @@ export const AdminView = () => {
               <ShieldCheck className="w-5 h-5 text-sky-400" /> Personal, Control de Accesos & Seguridad
             </h2>
             <p className="text-xs text-slate-400">
-              Aprobá cuentas de empleados, reasigná locales y definí el tope de descuento sin PIN.
+              Aprobá cuentas de empleados, reasigná locales, cargá su WhatsApp para avisos de tareas y definí el tope de descuento.
             </p>
           </div>
 
@@ -1106,6 +1124,7 @@ export const AdminView = () => {
               <tr>
                 <th className="px-4 py-3">Nombre Completo</th>
                 <th className="px-3 py-3">Rol</th>
+                <th className="px-3 py-3">WhatsApp (Avisos)</th>
                 <th className="px-3 py-3">Sucursal Asignada</th>
                 <th className="px-3 py-3">Estado</th>
                 <th className="px-3 py-3 text-right">Acción</th>
@@ -1121,6 +1140,58 @@ export const AdminView = () => {
                     <span className="uppercase text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-sky-400">
                       {u.rol}
                     </span>
+                  </td>
+                  <td className="px-3 py-3">
+                    {editandoWhatsappUserId === u.id ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          placeholder="Ej. 5492615551234"
+                          value={whatsappTemp}
+                          onChange={(e) => setWhatsappTemp(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleGuardarWhatsappUsuario(u.id);
+                            }
+                          }}
+                          className="w-36 bg-slate-950 border border-sky-500 rounded px-2 py-1 text-white font-mono text-xs focus:outline-none"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleGuardarWhatsappUsuario(u.id)}
+                          className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded cursor-pointer"
+                          title="Guardar teléfono"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditandoWhatsappUserId(null)}
+                          className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded cursor-pointer"
+                          title="Cancelar"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditandoWhatsappUserId(u.id);
+                          setWhatsappTemp(u.telefono_whatsapp || '');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 hover:border-sky-500/50 text-xs cursor-pointer transition-colors"
+                      >
+                        <Phone className="w-3 h-3 text-emerald-400" />
+                        {u.telefono_whatsapp ? (
+                          <span className="font-mono text-slate-200 font-semibold">{u.telefono_whatsapp}</span>
+                        ) : (
+                          <span className="text-slate-500 italic">+ Cargar WhatsApp</span>
+                        )}
+                      </button>
+                    )}
                   </td>
                   <td className="px-3 py-3">
                     {u.rol === 'admin' ? (
