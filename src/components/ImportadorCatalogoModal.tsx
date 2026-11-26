@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
-import type { Categoria } from '../types/database';
+import type { Categoria, Sucursal } from '../types/database';
 import {
   FileSpreadsheet,
   Download,
@@ -11,7 +11,8 @@ import {
   Loader2,
   X,
   RefreshCw,
-  Info
+  Info,
+  Store
 } from 'lucide-react';
 
 interface TalleCatalogo {
@@ -27,8 +28,6 @@ interface FilaImportada {
   categoria: string;
   color: string;
   talle: string;
-  sku: string;
-  costo: number;
   venta: number;
   stock: number;
   valida: boolean;
@@ -39,11 +38,13 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   empresaId: string;
+  empresaNombre?: string;
   sucursalId: string;
   sucursalNombre: string;
+  sucursalesDisponibles?: Sucursal[];
   categorias: Categoria[];
   talles: TalleCatalogo[];
-  onImportacionCompleta: () => Promise<void>;
+  onImportacionCompleta?: () => Promise<void>;
 }
 
 const COLUMNAS_PLANTILLA = [
@@ -51,8 +52,6 @@ const COLUMNAS_PLANTILLA = [
   { nombre: 'Categoria', obligatoria: false, detalle: 'Si queda vacío usa tu categoría principal' },
   { nombre: 'Color', obligatoria: false, detalle: 'Si queda vacío asigna "Negro"' },
   { nombre: 'Talle', obligatoria: false, detalle: 'S, M, L, XL, 38..48 o U (por defecto "U")' },
-  { nombre: 'SKU', obligatoria: false, detalle: 'Código de barras propio (si queda vacío se genera solo)' },
-  { nombre: 'Precio_Costo', obligatoria: false, detalle: 'Costo unitario sin signo $ (por defecto 0)' },
   { nombre: 'Precio_Venta', obligatoria: true, detalle: 'Precio al público sin signo $ (mayor a 0)' },
   { nombre: 'Stock_Inicial', obligatoria: false, detalle: 'Cantidad de unidades (por defecto 0)' }
 ];
@@ -61,38 +60,44 @@ export const ImportadorCatalogoModal = ({
   isOpen,
   onClose,
   empresaId,
+  empresaNombre,
   sucursalId,
   sucursalNombre,
+  sucursalesDisponibles = [],
   categorias,
   talles,
   onImportacionCompleta
 }: Props) => {
   const [filas, setFilas] = useState<FilaImportada[]>([]);
   const [nombreArchivo, setNombreArchivo] = useState<string>('');
-  const [modoStock, setModoStock] = useState<'sumar' | 'sobrescribir'>('sumar');
+  const [modoStock, setModoStock] = useState<'sumar' | 'sobrescribir'>('sobrescribir');
+  const [sucursalDestinoId, setSucursalDestinoId] = useState<string>(sucursalId);
   const [importando, setImportando] = useState(false);
   const [progreso, setProgreso] = useState({ actual: 0, total: 0 });
   const [resultadoFinal, setResultadoFinal] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    setSucursalDestinoId(sucursalId);
+  }, [sucursalId, isOpen]);
+
   if (!isOpen) return null;
 
+  const sucursalDestinoNombre =
+    sucursalesDisponibles.find((s) => s.id === sucursalDestinoId)?.nombre || sucursalNombre;
+
   const handleDescargarPlantilla = () => {
-    // Hoja 1: Solo encabezados exactos y filas completamente vacías para llenar
     const encabezados = [COLUMNAS_PLANTILLA.map((c) => c.nombre)];
     const ws = XLSX.utils.aoa_to_sheet(encabezados);
     ws['!cols'] = [
       { wch: 24 },
-      { wch: 16 },
-      { wch: 14 },
-      { wch: 10 },
       { wch: 18 },
       { wch: 14 },
+      { wch: 10 },
       { wch: 14 },
       { wch: 14 }
     ];
 
-    // Hoja 2: Guía rápida de referencia para el cliente
     const guiaData = COLUMNAS_PLANTILLA.map((c) => ({
       Columna: c.nombre,
       Requisito: c.obligatoria ? 'OBLIGATORIA' : 'Opcional',
@@ -104,7 +109,8 @@ export const ImportadorCatalogoModal = ({
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Catalogo_GEMI');
     XLSX.utils.book_append_sheet(wb, wsGuia, 'Guia_Columnas');
-    XLSX.writeFile(wb, `Plantilla_Vacia_GEMI_${sucursalNombre.replace(/\s+/g, '_')}.xlsx`);
+    const etiquetaArchivo = (empresaNombre || sucursalDestinoNombre).replace(/\s+/g, '_');
+    XLSX.writeFile(wb, `Plantilla_GEMI_${etiquetaArchivo}.xlsx`);
   };
 
   const normalizarClave = (obj: any, posiblesNombres: string[]) => {
@@ -135,7 +141,6 @@ export const ImportadorCatalogoModal = ({
       const ws = wb.Sheets[wsname];
       const rawData = XLSX.utils.sheet_to_json(ws);
 
-      // Filtrar filas completamente vacías por si el usuario dejó renglones en blanco
       const filasConDatos = rawData.filter((row: any) =>
         Object.values(row).some((val) => val !== undefined && val !== null && String(val).trim() !== '')
       );
@@ -147,8 +152,6 @@ export const ImportadorCatalogoModal = ({
           (categorias[0]?.nombre || 'General');
         const color = String(normalizarClave(row, ['color', 'variante', 'tono'])).trim() || 'Negro';
         const talle = String(normalizarClave(row, ['talle', 'size', 'talla'])).trim().toUpperCase() || 'U';
-        const sku = String(normalizarClave(row, ['sku', 'codigo', 'codigobarras', 'skuinterno'])).trim();
-        const costo = Number(normalizarClave(row, ['preciocosto', 'costo', 'costotaller'])) || 0;
         const venta = Number(normalizarClave(row, ['precioventa', 'venta', 'precio'])) || 0;
         const stock = Math.max(0, Math.floor(Number(normalizarClave(row, ['stockinicial', 'stock', 'cantidad'])) || 0));
 
@@ -165,8 +168,6 @@ export const ImportadorCatalogoModal = ({
           categoria,
           color,
           talle,
-          sku,
-          costo,
           venta,
           stock,
           valida: !error,
@@ -182,7 +183,7 @@ export const ImportadorCatalogoModal = ({
 
   const handleEjecutarImportacion = async () => {
     const filasValidas = filas.filter((f) => f.valida);
-    if (filasValidas.length === 0) return;
+    if (filasValidas.length === 0 || !sucursalDestinoId) return;
 
     setImportando(true);
     setProgreso({ actual: 0, total: filasValidas.length });
@@ -245,7 +246,7 @@ export const ImportadorCatalogoModal = ({
                 empresa_id: empresaId,
                 nombre: fila.nombre,
                 categoria_id: catId || null,
-                precio_costo: fila.costo,
+                precio_costo: 0,
                 precio_venta: fila.venta,
                 activo: true
               })
@@ -258,14 +259,14 @@ export const ImportadorCatalogoModal = ({
           mapaProductos.set(fila.nombre.toLowerCase(), prodId);
         }
 
-        // 3. Actualizar precios en la sucursal activa
+        // 3. Actualizar precio de venta en la sucursal destino
         await supabase
           .from('productos_precios_sucursal')
           .upsert(
             {
               producto_id: prodId,
-              sucursal_id: sucursalId,
-              precio_costo: fila.costo,
+              sucursal_id: sucursalDestinoId,
+              precio_costo: 0,
               precio_venta: fila.venta,
               updated_at: new Date().toISOString()
             },
@@ -275,7 +276,7 @@ export const ImportadorCatalogoModal = ({
         // 4. Resolver Talle
         const talleId = mapaTalles.get(fila.talle.toUpperCase()) || talleUnicoDefault;
 
-        // 5. Resolver o crear Variante (Producto + Talle + Color)
+        // 5. Resolver o crear Variante (Producto + Talle + Color) con SKU automático
         let { data: varExistente } = await supabase
           .from('variantes')
           .select('id')
@@ -285,11 +286,9 @@ export const ImportadorCatalogoModal = ({
           .maybeSingle();
 
         if (!varExistente) {
-          const skuFinal =
-            fila.sku ||
-            `${fila.nombre.replace(/\s+/g, '').substring(0, 4).toUpperCase()}-${fila.color
-              .substring(0, 3)
-              .toUpperCase()}-${fila.talle}-${Date.now().toString().slice(-4)}`;
+          const skuAuto = `${fila.nombre.replace(/\s+/g, '').substring(0, 4).toUpperCase()}-${fila.color
+            .substring(0, 3)
+            .toUpperCase()}-${fila.talle}-${Date.now().toString().slice(-4)}`;
 
           const { data: varNueva, error: errVar } = await supabase
             .from('variantes')
@@ -297,7 +296,7 @@ export const ImportadorCatalogoModal = ({
               producto_id: prodId,
               talle_id: talleId,
               color: fila.color,
-              sku_interno: skuFinal
+              sku_interno: skuAuto
             })
             .select('id')
             .single();
@@ -315,7 +314,7 @@ export const ImportadorCatalogoModal = ({
               .from('stock_sucursal')
               .select('cantidad')
               .eq('variante_id', varExistente.id)
-              .eq('sucursal_id', sucursalId)
+              .eq('sucursal_id', sucursalDestinoId)
               .maybeSingle();
 
             cantidadFinal = Number(stockPrevio?.cantidad || 0) + fila.stock;
@@ -326,7 +325,7 @@ export const ImportadorCatalogoModal = ({
             .upsert(
               {
                 variante_id: varExistente.id,
-                sucursal_id: sucursalId,
+                sucursal_id: sucursalDestinoId,
                 cantidad: cantidadFinal,
                 updated_at: new Date().toISOString()
               },
@@ -335,8 +334,10 @@ export const ImportadorCatalogoModal = ({
         }
       }
 
-      await onImportacionCompleta();
-      setResultadoFinal(`¡Se importaron ${filasValidas.length} variantes correctamente en ${sucursalNombre}!`);
+      if (onImportacionCompleta) {
+        await onImportacionCompleta();
+      }
+      setResultadoFinal(`¡Se importaron ${filasValidas.length} variantes correctamente en ${sucursalDestinoNombre}!`);
       setFilas([]);
       setNombreArchivo('');
     } catch (err: any) {
@@ -352,35 +353,58 @@ export const ImportadorCatalogoModal = ({
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full p-6 space-y-5 shadow-2xl my-auto">
-        <div className="flex items-start justify-between border-b border-slate-800 pb-4">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 pb-4">
           <div>
-            <h3 className="text-base font-black uppercase text-white flex items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+              Carga Masiva Super Admin {empresaNombre ? `· ${empresaNombre}` : ''}
+            </span>
+            <h3 className="text-base font-black uppercase text-white flex items-center gap-2 mt-0.5">
               <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-              Importar Catálogo Masivo desde Excel / CSV
+              Importar Catálogo desde Excel / CSV
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Destino: <strong className="text-sky-400">{sucursalNombre}</strong> · Subí cientos de prendas, talles y precios en segundos.
+              Destino: <strong className="text-sky-400">{sucursalDestinoNombre}</strong> · Sin costo ni SKU manual.
             </p>
           </div>
-          <button
-            type="button"
-            disabled={importando}
-            onClick={onClose}
-            className="text-slate-400 hover:text-white cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-2">
+            {sucursalesDisponibles.length > 1 && (
+              <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs">
+                <Store className="w-3.5 h-3.5 text-sky-400" />
+                <select
+                  value={sucursalDestinoId}
+                  onChange={(e) => setSucursalDestinoId(e.target.value)}
+                  className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
+                >
+                  {sucursalesDisponibles.map((s) => (
+                    <option key={s.id} value={s.id} className="bg-slate-900">
+                      {s.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={importando}
+              onClick={onClose}
+              className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Paso 1 y Paso 2 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-sky-400">
-              Paso 1 · Plantilla en blanco
+              Paso 1 · Plantilla simplificada
             </span>
-            <h4 className="text-xs font-bold text-white">Descargá el Excel vacío con los encabezados</h4>
+            <h4 className="text-xs font-bold text-white">Descargá el Excel vacío (solo 6 columnas)</h4>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Viene sin productos cargados (solo con las columnas exactas y una pestaña de guía) para que completes directo desde la fila 2.
+              Incluye únicamente Nombre, Categoría, Color, Talle, Precio de Venta y Stock Inicial.
             </p>
             <button
               type="button"
@@ -422,7 +446,7 @@ export const ImportadorCatalogoModal = ({
               <Info className="w-4 h-4 text-sky-400" />
               <span>Estructura de columnas del archivo:</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {COLUMNAS_PLANTILLA.map((col) => (
                 <div
                   key={col.nombre}
@@ -475,8 +499,8 @@ export const ImportadorCatalogoModal = ({
                   onChange={(e) => setModoStock(e.target.value as any)}
                   className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-white font-bold cursor-pointer"
                 >
-                  <option value="sumar">Sumar al stock actual (+)</option>
                   <option value="sobrescribir">Reemplazar stock exacto (=)</option>
+                  <option value="sumar">Sumar al stock actual (+)</option>
                 </select>
               </div>
             </div>
@@ -489,8 +513,7 @@ export const ImportadorCatalogoModal = ({
                     <th className="px-3 py-2">Prenda</th>
                     <th className="px-3 py-2">Categoría</th>
                     <th className="px-3 py-2">Color / Talle</th>
-                    <th className="px-3 py-2">Costo</th>
-                    <th className="px-3 py-2">Venta</th>
+                    <th className="px-3 py-2">Precio Venta</th>
                     <th className="px-3 py-2">Stock</th>
                     <th className="px-3 py-2">Estado</th>
                   </tr>
@@ -507,7 +530,6 @@ export const ImportadorCatalogoModal = ({
                       <td className="px-3 py-2 text-slate-300">
                         {f.color} · <strong>{f.talle}</strong>
                       </td>
-                      <td className="px-3 py-2 font-mono text-slate-400">${f.costo.toLocaleString()}</td>
                       <td className="px-3 py-2 font-mono text-emerald-400 font-bold">
                         ${f.venta.toLocaleString()}
                       </td>
@@ -537,7 +559,7 @@ export const ImportadorCatalogoModal = ({
             </div>
           ) : (
             <span className="text-[11px] text-slate-500">
-              Las categorías o variantes nuevas se crean solas.
+              Las categorías, variantes y códigos internos se generan automáticamente.
             </span>
           )}
 

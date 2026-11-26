@@ -3,7 +3,6 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { registrarAuditoria } from '../lib/auditoria';
 import type { Categoria } from '../types/database';
-import { ImportadorCatalogoModal } from '../components/ImportadorCatalogoModal';
 import { 
   Boxes, 
   Plus, 
@@ -14,8 +13,7 @@ import {
   Loader2,
   Edit2,
   Trash2,
-  X,
-  FileSpreadsheet
+  X
 } from 'lucide-react';
 
 interface TalleCatalogo {
@@ -38,8 +36,6 @@ export const CatalogoStockView = () => {
 
   const [nuevoColor, setNuevoColor] = useState('');
   const [busqueda, setBusqueda] = useState('');
-
-  const [mostrarModalImportar, setMostrarModalImportar] = useState(false);
 
   // Estados Modal Nuevo Producto
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
@@ -669,14 +665,6 @@ export const CatalogoStockView = () => {
         {esAdmin && (
           <div className="flex flex-wrap gap-2">
             <button
-              type="button"
-              onClick={() => setMostrarModalImportar(true)}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 uppercase tracking-wider transition-colors cursor-pointer shadow-lg"
-            >
-              <FileSpreadsheet className="w-4 h-4" /> Importar Excel / CSV
-            </button>
-
-            <button
               onClick={() => {
                 setMostrarModalNuevo(true);
                 setErrorModal(null);
@@ -894,7 +882,6 @@ export const CatalogoStockView = () => {
                                   placeholder="0"
                                   value={matrizValores[variante.id] ?? ''}
                                   onChange={(e) => {
-                                    // Solo dígitos y sin ceros a la izquierda (ej. "02" -> "2")
                                     const soloDigitos = e.target.value.replace(/\D/g, '');
                                     const limpio = soloDigitos === '' ? '' : String(parseInt(soloDigitos, 10));
                                     setMatrizValores({
@@ -1122,7 +1109,6 @@ export const CatalogoStockView = () => {
                 </select>
               </div>
 
-              {/* Talles desmarcados por defecto */}
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <label className="uppercase font-bold text-slate-400">
@@ -1176,7 +1162,6 @@ export const CatalogoStockView = () => {
                 )}
               </div>
 
-              {/* Selector de Colores integrado en el modal */}
               <div className="space-y-2">
                 <label className="block uppercase font-bold text-slate-400">
                   Colores de la Prenda ({coloresSeleccionados.length})
@@ -1251,7 +1236,6 @@ export const CatalogoStockView = () => {
                 )}
               </div>
 
-              {/* Precios (Costo Opcional + Precio Venta Obligatorio) */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block uppercase font-bold text-slate-400 mb-1">
@@ -1302,19 +1286,6 @@ export const CatalogoStockView = () => {
             </form>
           </div>
         </div>
-      )}
-
-      {empresa?.id && sucursalEfectivaId && esAdmin && (
-        <ImportadorCatalogoModal
-          isOpen={mostrarModalImportar}
-          onClose={() => setMostrarModalImportar(false)}
-          empresaId={empresa.id}
-          sucursalId={sucursalEfectivaId}
-          sucursalNombre={sucursalEfectivaNombre}
-          categorias={categorias}
-          talles={talles}
-          onImportacionCompleta={cargarProductos}
-        />
       )}
     </div>
   );

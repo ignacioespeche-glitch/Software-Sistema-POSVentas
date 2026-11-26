@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ConfiguracionArcaCard } from '../components/ConfiguracionArcaCard';
-import type { Sucursal } from '../types/database';
+import { ImportadorCatalogoModal } from '../components/ImportadorCatalogoModal';
+import type { Sucursal, Categoria } from '../types/database';
 import {
   ShieldCheck,
   Search,
@@ -25,7 +26,10 @@ import {
   Trash2,
   RotateCcw,
   FileText,
-  X
+  X,
+  FileSpreadsheet,
+  Tags,
+  Loader2
 } from 'lucide-react';
 
 // Lista centralizada de módulos: agregando uno acá aparece automáticamente en todos los clientes
@@ -97,10 +101,24 @@ export const SuperAdminView = () => {
   const [editando, setEditando] = useState<EmpresaMetricas | null>(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
-  // Modal exclusivo de Configuración ARCA por empresa (para servicio pago)
+  // Modal exclusivo de Configuración ARCA por empresa
   const [empresaArcaSeleccionada, setEmpresaArcaSeleccionada] = useState<EmpresaMetricas | null>(null);
   const [sucursalesEmpresaArca, setSucursalesEmpresaArca] = useState<Sucursal[]>([]);
   const [cargandoSucsArca, setCargandoSucsArca] = useState(false);
+
+  // Modal de Categorías por empresa
+  const [empresaCategoriasSeleccionada, setEmpresaCategoriasSeleccionada] = useState<EmpresaMetricas | null>(null);
+  const [categoriasEmpresa, setCategoriasEmpresa] = useState<Categoria[]>([]);
+  const [nuevaCategoriaNombre, setNuevaCategoriaNombre] = useState('');
+  const [cargandoCategorias, setCargandoCategorias] = useState(false);
+  const [guardandoCategoria, setGuardandoCategoria] = useState(false);
+
+  // Modal de Importador Excel / CSV por empresa
+  const [empresaImportarSeleccionada, setEmpresaImportarSeleccionada] = useState<EmpresaMetricas | null>(null);
+  const [sucursalesImportar, setSucursalesImportar] = useState<Sucursal[]>([]);
+  const [categoriasImportar, setCategoriasImportar] = useState<Categoria[]>([]);
+  const [tallesCatalogo, setTallesCatalogo] = useState<any[]>([]);
+  const [cargandoDatosImportar, setCargandoDatosImportar] = useState(false);
 
   // Anuncio global
   const [mensajeAnuncio, setMensajeAnuncio] = useState('');
@@ -164,6 +182,79 @@ export const SuperAdminView = () => {
       .order('nombre');
     setSucursalesEmpresaArca((data as Sucursal[]) || []);
     setCargandoSucsArca(false);
+  };
+
+  // Gestor de Categorías por Empresa
+  const abrirGestorCategorias = async (emp: EmpresaMetricas) => {
+    setEmpresaCategoriasSeleccionada(emp);
+    setNuevaCategoriaNombre('');
+    setCargandoCategorias(true);
+    const { data } = await supabase
+      .from('categorias')
+      .select('*')
+      .eq('empresa_id', emp.empresa_id)
+      .order('orden');
+    setCategoriasEmpresa((data as Categoria[]) || []);
+    setCargandoCategorias(false);
+  };
+
+  const handleAgregarCategoriaEmpresa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!empresaCategoriasSeleccionada || !nuevaCategoriaNombre.trim()) return;
+
+    const nombreLimpio = nuevaCategoriaNombre.trim();
+    const yaExiste = categoriasEmpresa.some(
+      (c) => c.nombre.toLowerCase() === nombreLimpio.toLowerCase()
+    );
+    if (yaExiste) {
+      alert('Esa categoría ya existe en esta empresa.');
+      return;
+    }
+
+    setGuardandoCategoria(true);
+    const { error } = await supabase.from('categorias').insert({
+      empresa_id: empresaCategoriasSeleccionada.empresa_id,
+      nombre: nombreLimpio,
+      orden: categoriasEmpresa.length + 1
+    });
+    setGuardandoCategoria(false);
+
+    if (error) {
+      alert('Error creando categoría: ' + error.message);
+      return;
+    }
+
+    setNuevaCategoriaNombre('');
+    abrirGestorCategorias(empresaCategoriasSeleccionada);
+  };
+
+  const handleEliminarCategoriaEmpresa = async (cat: Categoria) => {
+    if (!empresaCategoriasSeleccionada) return;
+    if (!confirm(`¿Eliminar la categoría "${cat.nombre}" de ${empresaCategoriasSeleccionada.nombre}?`)) return;
+
+    const { error } = await supabase.from('categorias').delete().eq('id', cat.id);
+    if (error) {
+      alert('No se pudo eliminar (puede tener productos asociados): ' + error.message);
+      return;
+    }
+    abrirGestorCategorias(empresaCategoriasSeleccionada);
+  };
+
+  // Abrir Importador Excel / CSV desde Super Admin
+  const abrirImportadorCliente = async (emp: EmpresaMetricas) => {
+    setCargandoDatosImportar(true);
+    setEmpresaImportarSeleccionada(emp);
+
+    const [resSucs, resCats, resTalles] = await Promise.all([
+      supabase.from('sucursales').select('*').eq('empresa_id', emp.empresa_id).order('nombre'),
+      supabase.from('categorias').select('*').eq('empresa_id', emp.empresa_id).order('orden'),
+      supabase.from('talles_catalogo').select('*').order('orden')
+    ]);
+
+    setSucursalesImportar((resSucs.data as Sucursal[]) || []);
+    setCategoriasImportar((resCats.data as Categoria[]) || []);
+    setTallesCatalogo(resTalles.data || []);
+    setCargandoDatosImportar(false);
   };
 
   const calcularDiasRestantes = (fechaVenc: string | null) => {
@@ -382,7 +473,6 @@ export const SuperAdminView = () => {
     cargarTodo();
   };
 
-  // KPIs calculados
   const clientesSaaS = empresas.filter((e) => !e.es_marca_interna);
   const marcasInternas = empresas.filter((e) => e.es_marca_interna);
 
@@ -400,7 +490,6 @@ export const SuperAdminView = () => {
 
   const alertasInactividad = empresas.filter((e) => estaInactivo10Dias(e)).length;
 
-  // Filtrado de tabla
   const empresasFiltradas = empresas.filter((e) => {
     const matchTexto =
       e.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -450,7 +539,7 @@ export const SuperAdminView = () => {
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Gestión de clientes SaaS, configuración fiscal ARCA y seguimiento de acompañamiento 1 a 1.
+            Gestión de clientes SaaS, importación masiva, categorías, configuración fiscal ARCA y seguimiento 1 a 1.
           </p>
         </div>
 
@@ -703,6 +792,26 @@ export const SuperAdminView = () => {
                       </button>
                     )}
 
+                    {/* Botón Importar Excel / CSV (Exclusivo Super Admin) */}
+                    <button
+                      type="button"
+                      onClick={() => abrirImportadorCliente(emp)}
+                      title={`Importar Excel / CSV para ${emp.nombre}`}
+                      className="bg-emerald-500/10 hover:bg-emerald-600 border border-emerald-500/30 text-emerald-400 hover:text-white font-bold px-3 py-2 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" /> Importar Excel
+                    </button>
+
+                    {/* Botón Gestor de Categorías (Exclusivo Super Admin) */}
+                    <button
+                      type="button"
+                      onClick={() => abrirGestorCategorias(emp)}
+                      title={`Cargar o editar categorías de ${emp.nombre}`}
+                      className="bg-sky-500/10 hover:bg-sky-500 border border-sky-500/30 text-sky-400 hover:text-slate-950 font-bold px-3 py-2 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <Tags className="w-3.5 h-3.5" /> Categorías
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => abrirConfiguracionArcaCliente(emp)}
@@ -853,7 +962,6 @@ export const SuperAdminView = () => {
             </div>
           </div>
 
-          {/* Lista de Locales Interesados */}
           <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -896,6 +1004,109 @@ export const SuperAdminView = () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* MODAL GESTOR DE CATEGORÍAS POR EMPRESA */}
+      {empresaCategoriasSeleccionada && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-sky-400">
+                  Gestión Rápida de Rubros
+                </span>
+                <h3 className="font-black text-base text-white flex items-center gap-2 mt-0.5">
+                  <Tags className="w-4 h-4 text-sky-400" />
+                  Categorías · {empresaCategoriasSeleccionada.nombre}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmpresaCategoriasSeleccionada(null)}
+                className="p-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAgregarCategoriaEmpresa} className="flex gap-2">
+              <input
+                type="text"
+                required
+                placeholder="Ej. Remeras Manga Corta, Buzos, Jeans..."
+                value={nuevaCategoriaNombre}
+                onChange={(e) => setNuevaCategoriaNombre(e.target.value)}
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={guardandoCategoria}
+                className="bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-black px-4 py-2 rounded-xl text-xs inline-flex items-center gap-1 cursor-pointer"
+              >
+                {guardandoCategoria ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Plus className="w-3.5 h-3.5" />
+                )}
+                Agregar
+              </button>
+            </form>
+
+            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+              {cargandoCategorias ? (
+                <p className="text-center text-xs text-slate-500 py-6">Cargando categorías...</p>
+              ) : categoriasEmpresa.length === 0 ? (
+                <p className="text-center text-xs text-slate-500 py-6">
+                  Esta empresa todavía no tiene categorías cargadas.
+                </p>
+              ) : (
+                categoriasEmpresa.map((cat) => (
+                  <div
+                    key={cat.id}
+                    className="flex items-center justify-between bg-slate-950 border border-slate-800 px-3.5 py-2.5 rounded-xl text-xs"
+                  >
+                    <span className="font-bold text-white">{cat.nombre}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleEliminarCategoriaEmpresa(cat)}
+                      title="Eliminar categoría"
+                      className="text-slate-500 hover:text-rose-400 p-1 rounded cursor-pointer transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setEmpresaCategoriasSeleccionada(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL IMPORTADOR EXCEL / CSV POR EMPRESA */}
+      {empresaImportarSeleccionada && !cargandoDatosImportar && sucursalesImportar.length > 0 && (
+        <ImportadorCatalogoModal
+          isOpen={Boolean(empresaImportarSeleccionada)}
+          onClose={() => setEmpresaImportarSeleccionada(null)}
+          empresaId={empresaImportarSeleccionada.empresa_id}
+          empresaNombre={empresaImportarSeleccionada.nombre}
+          sucursalId={sucursalesImportar[0].id}
+          sucursalNombre={sucursalesImportar[0].nombre}
+          sucursalesDisponibles={sucursalesImportar}
+          categorias={categoriasImportar}
+          talles={tallesCatalogo}
+          onImportacionCompleta={cargarTodo}
+        />
       )}
 
       {/* MODAL CONFIGURACIÓN ARCA (EXCLUSIVO SUPER ADMIN POR EMPRESA) */}
@@ -1069,7 +1280,6 @@ export const SuperAdminView = () => {
               </div>
             </div>
 
-            {/* Módulos habilitados dinámicos */}
             <div className="border-t border-slate-800 pt-3">
               <span className="block text-xs font-bold text-slate-400 mb-2">Módulos Activos en este Local</span>
               <div className="flex flex-wrap gap-3 text-xs">
