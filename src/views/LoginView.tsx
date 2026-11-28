@@ -11,12 +11,10 @@ import {
   ArrowLeft,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
-  KeyRound,
-  ShieldCheck
+  Sparkles
 } from 'lucide-react';
 
-type ModoAuth = 'login' | 'registro' | 'recuperar_email' | 'recuperar_codigo' | 'recuperar_password';
+type ModoAuth = 'login' | 'registro' | 'recuperar_email' | 'recuperar_password';
 
 export const LoginView = () => {
   const navigate = useNavigate();
@@ -25,7 +23,6 @@ export const LoginView = () => {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [codigoOtp, setCodigoOtp] = useState('');
   const [nuevaPassword, setNuevaPassword] = useState('');
   const [confirmarPassword, setConfirmarPassword] = useState('');
 
@@ -44,6 +41,29 @@ export const LoginView = () => {
         if (data.length > 0) setSucursalId(data[0].id);
       }
     });
+
+    // Detecta automáticamente cuando el usuario vuelve desde el link del mail
+    if (window.location.hash.includes('type=recovery')) {
+      setModo('recuperar_password');
+      setMensaje({
+        tipo: 'exito',
+        texto: 'Identidad verificada. Ingresá tu nueva contraseña acá abajo.'
+      });
+    }
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setModo('recuperar_password');
+        setMensaje({
+          tipo: 'exito',
+          texto: 'Identidad verificada. Ingresá tu nueva contraseña acá abajo.'
+        });
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const validarEmail = (correo: string) => {
@@ -157,8 +177,8 @@ export const LoginView = () => {
     setLoading(false);
   };
 
-  // Paso 1: Enviar código OTP de 6 dígitos usando signInWithOtp (no requiere SMTP custom)
-  const handleEnviarCodigoRecuperacion = async (e: React.FormEvent) => {
+  // Paso 1: Enviar enlace de recuperación al mail
+  const handleEnviarRecuperacion = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMensaje(null);
@@ -169,70 +189,22 @@ export const LoginView = () => {
       return;
     }
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        shouldCreateUser: false,
-      },
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/login`,
     });
 
     if (error) {
-      if (error.message.toLowerCase().includes('signups not allowed')) {
-        setMensaje({
-          tipo: 'error',
-          texto: 'No encontramos ninguna cuenta registrada con ese correo.'
-        });
-      } else {
-        setMensaje({ tipo: 'error', texto: error.message });
-      }
+      setMensaje({ tipo: 'error', texto: error.message });
     } else {
-      setCodigoOtp('');
       setMensaje({
         tipo: 'exito',
-        texto: `Te enviamos un código de 6 dígitos a ${email}. Revisá tu casilla o spam y escribilo acá abajo.`
+        texto: `Te enviamos un correo a ${email}. Abrilo y hacé clic en el enlace para escribir tu nueva contraseña.`
       });
-      setModo('recuperar_codigo');
     }
     setLoading(false);
   };
 
-  // Paso 2: Verificar que el código de 6 dígitos coincida
-  const handleVerificarCodigo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMensaje(null);
-
-    const tokenLimpio = codigoOtp.trim();
-    if (tokenLimpio.length < 6) {
-      setMensaje({ tipo: 'error', texto: 'Ingresá el código completo de 6 dígitos que llegó a tu mail.' });
-      setLoading(false);
-      return;
-    }
-
-    const { error } = await supabase.auth.verifyOtp({
-      email: email.trim(),
-      token: tokenLimpio,
-      type: 'email',
-    });
-
-    if (error) {
-      setMensaje({
-        tipo: 'error',
-        texto: 'El código es incorrecto o ya venció. Revisá el número o pedí uno nuevo.'
-      });
-      setLoading(false);
-      return;
-    }
-
-    setMensaje({
-      tipo: 'exito',
-      texto: 'Código verificado. Ahora elegí tu nueva contraseña.'
-    });
-    setModo('recuperar_password');
-    setLoading(false);
-  };
-
-  // Paso 3: Guardar nueva contraseña y volver al login
+  // Paso 2: Guardar nueva contraseña al volver del enlace
   const handleGuardarNuevaPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -261,11 +233,11 @@ export const LoginView = () => {
     }
 
     await supabase.auth.signOut();
+    window.history.replaceState(null, '', '/login');
     setMensaje({
       tipo: 'exito',
       texto: '¡Contraseña cambiada con éxito! Ya podés iniciar sesión con tu nueva clave.'
     });
-    setCodigoOtp('');
     setNuevaPassword('');
     setConfirmarPassword('');
     setPassword('');
@@ -284,11 +256,7 @@ export const LoginView = () => {
     },
     recuperar_email: {
       titulo: 'Recuperar Contraseña',
-      subtitulo: 'Ingresá tu mail y te enviamos un código de 6 dígitos'
-    },
-    recuperar_codigo: {
-      titulo: 'Verificar Código',
-      subtitulo: `Escribí el código de 6 dígitos enviado a ${email}`
+      subtitulo: 'Ingresá tu mail y te enviamos un enlace directo para cambiarla'
     },
     recuperar_password: {
       titulo: 'Nueva Contraseña',
@@ -483,7 +451,7 @@ export const LoginView = () => {
 
         {/* PASO 1 RECUPERACIÓN: INGRESAR EMAIL */}
         {modo === 'recuperar_email' && (
-          <form onSubmit={handleEnviarCodigoRecuperacion} className="space-y-4">
+          <form onSubmit={handleEnviarRecuperacion} className="space-y-4">
             <div>
               <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">
                 Tu Email Registrado
@@ -506,58 +474,13 @@ export const LoginView = () => {
               disabled={loading}
               className="w-full bg-[#FF4500] hover:bg-[#ff571a] disabled:bg-zinc-800 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF4500]/20"
             >
-              {loading ? 'Enviando código...' : 'Enviar código al mail'}
+              {loading ? 'Enviando enlace...' : 'Enviar enlace de recuperación'}
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
         )}
 
-        {/* PASO 2 RECUPERACIÓN: VERIFICAR CÓDIGO OTP */}
-        {modo === 'recuperar_codigo' && (
-          <form onSubmit={handleVerificarCodigo} className="space-y-4">
-            <div>
-              <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">
-                Código de 6 dígitos
-              </label>
-              <div className="relative">
-                <KeyRound className="w-4 h-4 absolute left-3 top-3 text-[#FF4500]" />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  required
-                  maxLength={8}
-                  placeholder="000000"
-                  value={codigoOtp}
-                  onChange={(e) => setCodigoOtp(e.target.value.replace(/\D/g, ''))}
-                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2.5 text-center text-base font-mono font-black tracking-[0.4em] text-white focus:outline-none focus:border-[#FF4500]"
-                  autoFocus
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#FF4500] hover:bg-[#ff571a] disabled:bg-zinc-800 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF4500]/20"
-            >
-              {loading ? 'Verificando...' : 'Verificar código'}
-              <ShieldCheck className="w-4 h-4" />
-            </button>
-
-            <div className="text-center">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleEnviarCodigoRecuperacion}
-                className="text-[11px] text-zinc-400 hover:text-[#FF4500] underline cursor-pointer"
-              >
-                ¿No llegó el mail? Reenviar código
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* PASO 3 RECUPERACIÓN: NUEVA CONTRASEÑA + REPETIR CONTRASEÑA */}
+        {/* PASO 2 RECUPERACIÓN: NUEVA CONTRASEÑA + REPETIR CONTRASEÑA */}
         {modo === 'recuperar_password' && (
           <form onSubmit={handleGuardarNuevaPassword} className="space-y-4">
             <div>
@@ -608,7 +531,7 @@ export const LoginView = () => {
 
         {/* Pie de tarjeta: Cambiar entre Login / Registro / Volver */}
         <div className="pt-2 text-center border-t border-zinc-800">
-          {modo === 'recuperar_email' || modo === 'recuperar_codigo' || modo === 'recuperar_password' ? (
+          {modo === 'recuperar_email' || modo === 'recuperar_password' ? (
             <button
               type="button"
               onClick={() => {
