@@ -2,15 +2,32 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { Sucursal } from '../types/database';
-import { Lock, Mail, User, Store, ArrowRight, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import {
+  Lock,
+  Mail,
+  User,
+  Store,
+  ArrowRight,
+  ArrowLeft,
+  CheckCircle2,
+  AlertCircle,
+  Sparkles,
+  KeyRound
+} from 'lucide-react';
+
+type ModoAuth = 'login' | 'registro' | 'recuperar_email' | 'recuperar_codigo';
 
 export const LoginView = () => {
   const navigate = useNavigate();
-  const [esRegistro, setEsRegistro] = useState(false);
+  const [modo, setModo] = useState<ModoAuth>('login');
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [codigoOtp, setCodigoOtp] = useState('');
+  const [nuevaPassword, setNuevaPassword] = useState('');
+  const [confirmarPassword, setConfirmarPassword] = useState('');
+
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
   const [sucursalId, setSucursalId] = useState('');
@@ -129,7 +146,7 @@ export const LoginView = () => {
           tipo: 'exito',
           texto: 'Te enviamos un enlace de confirmación a tu casilla de correo. Confirmalo para que el Administrador pueda habilitarte.'
         });
-        setEsRegistro(false);
+        setModo('login');
         setEmail('');
         setPassword('');
         setNombre('');
@@ -137,6 +154,114 @@ export const LoginView = () => {
       }
     }
     setLoading(false);
+  };
+
+  // Paso 1 Recuperar: Enviar código al mail
+  const handleEnviarCodigoRecuperacion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMensaje(null);
+
+    if (!validarEmail(email)) {
+      setMensaje({ tipo: 'error', texto: 'Ingresá un correo electrónico válido.' });
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+
+    if (error) {
+      setMensaje({ tipo: 'error', texto: error.message });
+    } else {
+      setMensaje({
+        tipo: 'exito',
+        texto: `Enviamos un código de verificación a ${email}. Revisá tu bandeja de entrada o spam.`
+      });
+      setModo('recuperar_codigo');
+    }
+    setLoading(false);
+  };
+
+  // Paso 2 Recuperar: Confirmar código + nueva contraseña
+  const handleConfirmarNuevaPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMensaje(null);
+
+    const tokenLimpio = codigoOtp.trim();
+    if (tokenLimpio.length < 6) {
+      setMensaje({ tipo: 'error', texto: 'Ingresá el código de 6 dígitos que llegó a tu mail.' });
+      setLoading(false);
+      return;
+    }
+
+    if (nuevaPassword.length < 8) {
+      setMensaje({ tipo: 'error', texto: 'La nueva contraseña debe tener al menos 8 caracteres.' });
+      setLoading(false);
+      return;
+    }
+
+    if (nuevaPassword !== confirmarPassword) {
+      setMensaje({ tipo: 'error', texto: 'Las contraseñas no coinciden.' });
+      setLoading(false);
+      return;
+    }
+
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: tokenLimpio,
+      type: 'recovery',
+    });
+
+    if (verifyError) {
+      setMensaje({
+        tipo: 'error',
+        texto: 'Código inválido o vencido. Verificá los dígitos o pedí uno nuevo.'
+      });
+      setLoading(false);
+      return;
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: nuevaPassword,
+    });
+
+    if (updateError) {
+      setMensaje({ tipo: 'error', texto: updateError.message });
+      setLoading(false);
+      return;
+    }
+
+    await supabase.auth.signOut();
+    setMensaje({
+      tipo: 'exito',
+      texto: '¡Contraseña actualizada correctamente! Ya podés ingresar con tu nueva clave.'
+    });
+    setCodigoOtp('');
+    setNuevaPassword('');
+    setConfirmarPassword('');
+    setPassword('');
+    setModo('login');
+    setLoading(false);
+  };
+
+  const titulosPorModo: Record<ModoAuth, { titulo: string; subtitulo: string }> = {
+    login: {
+      titulo: 'Iniciar Sesión en GEMI',
+      subtitulo: 'Ingresá con tu cuenta autorizada'
+    },
+    registro: {
+      titulo: 'Registro de Personal',
+      subtitulo: 'Completá tus datos reales para solicitar acceso a un local existente'
+    },
+    recuperar_email: {
+      titulo: 'Recuperar Contraseña',
+      subtitulo: 'Te enviaremos un código de confirmación a tu correo'
+    },
+    recuperar_codigo: {
+      titulo: 'Crear Nueva Contraseña',
+      subtitulo: `Ingresá el código enviado a ${email}`
+    }
   };
 
   return (
@@ -180,14 +305,8 @@ export const LoginView = () => {
 
       <div className="bg-[#1E1E1E] border border-zinc-800 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-6">
         <div className="border-b border-zinc-800 pb-4 text-center">
-          <h2 className="text-lg font-bold text-white">
-            {esRegistro ? 'Registro de Personal' : 'Iniciar Sesión en GEMI'}
-          </h2>
-          <p className="text-xs text-zinc-400 mt-1">
-            {esRegistro
-              ? 'Completá tus datos reales para solicitar acceso a un local existente'
-              : 'Ingresá con tu cuenta autorizada'}
-          </p>
+          <h2 className="text-lg font-bold text-white">{titulosPorModo[modo].titulo}</h2>
+          <p className="text-xs text-zinc-400 mt-1">{titulosPorModo[modo].subtitulo}</p>
         </div>
 
         {mensaje && (
@@ -207,123 +326,264 @@ export const LoginView = () => {
           </div>
         )}
 
-        <form onSubmit={esRegistro ? handleRegistro : handleLogin} className="space-y-4">
-          {esRegistro && (
-            <>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Nombre</label>
-                  <div className="relative">
-                    <User className="w-3.5 h-3.5 absolute left-3 top-3 text-zinc-500" />
+        {/* FORMULARIO LOGIN / REGISTRO */}
+        {(modo === 'login' || modo === 'registro') && (
+          <form onSubmit={modo === 'registro' ? handleRegistro : handleLogin} className="space-y-4">
+            {modo === 'registro' && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Nombre</label>
+                    <div className="relative">
+                      <User className="w-3.5 h-3.5 absolute left-3 top-3 text-zinc-500" />
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej. Lucas"
+                        value={nombre}
+                        onChange={(e) => setNombre(e.target.value)}
+                        className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Apellido</label>
                     <input
                       type="text"
                       required
-                      placeholder="Ej. Lucas"
-                      value={nombre}
-                      onChange={(e) => setNombre(e.target.value)}
-                      className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
+                      placeholder="Ej. Gómez"
+                      value={apellido}
+                      onChange={(e) => setApellido(e.target.value)}
+                      className="w-full bg-[#121212] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Apellido</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Gómez"
-                    value={apellido}
-                    onChange={(e) => setApellido(e.target.value)}
-                    className="w-full bg-[#121212] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Rol</label>
-                  <select
-                    value={rol}
-                    onChange={(e) => setRol(e.target.value as any)}
-                    className="w-full bg-[#121212] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white capitalize focus:outline-none focus:border-[#FF4500]"
-                  >
-                    <option value="vendedor">Vendedor</option>
-                    <option value="admin">Administrador</option>
-                  </select>
-                </div>
-
-                {rol === 'vendedor' && (
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Sucursal</label>
-                    <div className="relative">
-                      <Store className="w-3.5 h-3.5 absolute left-2.5 top-3 text-zinc-500" />
-                      <select
-                        value={sucursalId}
-                        onChange={(e) => setSucursalId(e.target.value)}
-                        className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-8 pr-2 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
-                      >
-                        {sucursales.map((s) => (
-                          <option key={s.id} value={s.id}>{s.nombre}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Rol</label>
+                    <select
+                      value={rol}
+                      onChange={(e) => setRol(e.target.value as any)}
+                      className="w-full bg-[#121212] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white capitalize focus:outline-none focus:border-[#FF4500]"
+                    >
+                      <option value="vendedor">Vendedor</option>
+                      <option value="admin">Administrador</option>
+                    </select>
                   </div>
+
+                  {rol === 'vendedor' && (
+                    <div>
+                      <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Sucursal</label>
+                      <div className="relative">
+                        <Store className="w-3.5 h-3.5 absolute left-2.5 top-3 text-zinc-500" />
+                        <select
+                          value={sucursalId}
+                          onChange={(e) => setSucursalId(e.target.value)}
+                          className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-8 pr-2 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
+                        >
+                          {sucursales.map((s) => (
+                            <option key={s.id} value={s.id}>{s.nombre}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Email Real / Verídico</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
+                <input
+                  type="email"
+                  required
+                  placeholder="tu.correo@gmail.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs uppercase font-bold text-zinc-400">Contraseña</label>
+                {modo === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMensaje(null);
+                      setModo('recuperar_email');
+                    }}
+                    className="text-[11px] font-semibold text-zinc-400 hover:text-[#FF4500] transition-colors cursor-pointer"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
                 )}
               </div>
-            </>
-          )}
-
-          <div>
-            <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Email Real / Verídico</label>
-            <div className="relative">
-              <Mail className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
-              <input
-                type="email"
-                required
-                placeholder="tu.correo@gmail.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
-              />
+              <div className="relative">
+                <Lock className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
+                <input
+                  type="password"
+                  required
+                  placeholder="Mínimo 8 caracteres"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
+                />
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">Contraseña</label>
-            <div className="relative">
-              <Lock className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
-              <input
-                type="password"
-                required
-                placeholder="Mínimo 8 caracteres"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
-              />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[#FF4500] hover:bg-[#ff571a] disabled:bg-zinc-800 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF4500]/20"
+            >
+              {loading ? 'Procesando...' : modo === 'registro' ? 'Registrarme en GEMI' : 'Ingresar a GEMI'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </form>
+        )}
+
+        {/* PASO 1 RECUPERACIÓN: INGRESAR EMAIL */}
+        {modo === 'recuperar_email' && (
+          <form onSubmit={handleEnviarCodigoRecuperacion} className="space-y-4">
+            <div>
+              <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">
+                Tu Email Registrado
+              </label>
+              <div className="relative">
+                <Mail className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
+                <input
+                  type="email"
+                  required
+                  placeholder="tu.correo@gmail.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
+                />
+              </div>
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#FF4500] hover:bg-[#ff571a] disabled:bg-zinc-800 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF4500]/20"
-          >
-            {loading ? 'Procesando...' : esRegistro ? 'Registrarme en GEMI' : 'Ingresar a GEMI'}
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[#FF4500] hover:bg-[#ff571a] disabled:bg-zinc-800 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF4500]/20"
+            >
+              {loading ? 'Enviando código...' : 'Enviar código al mail'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </form>
+        )}
 
+        {/* PASO 2 RECUPERACIÓN: CÓDIGO OTP + NUEVA CONTRASEÑA */}
+        {modo === 'recuperar_codigo' && (
+          <form onSubmit={handleConfirmarNuevaPassword} className="space-y-4">
+            <div>
+              <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">
+                Código de Verificación (6 dígitos)
+              </label>
+              <div className="relative">
+                <KeyRound className="w-4 h-4 absolute left-3 top-2.5 text-[#FF4500]" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  required
+                  maxLength={8}
+                  placeholder="Ej. 123456"
+                  value={codigoOtp}
+                  onChange={(e) => setCodigoOtp(e.target.value.replace(/\s+/g, ''))}
+                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono tracking-widest text-white focus:outline-none focus:border-[#FF4500]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">
+                Nueva Contraseña
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
+                <input
+                  type="password"
+                  required
+                  placeholder="Mínimo 8 caracteres"
+                  value={nuevaPassword}
+                  onChange={(e) => setNuevaPassword(e.target.value)}
+                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">
+                Confirmar Nueva Contraseña
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
+                <input
+                  type="password"
+                  required
+                  placeholder="Repetí la nueva contraseña"
+                  value={confirmarPassword}
+                  onChange={(e) => setConfirmarPassword(e.target.value)}
+                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[#FF4500] hover:bg-[#ff571a] disabled:bg-zinc-800 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF4500]/20"
+            >
+              {loading ? 'Verificando...' : 'Confirmar y cambiar contraseña'}
+              <CheckCircle2 className="w-4 h-4" />
+            </button>
+
+            <div className="text-center">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleEnviarCodigoRecuperacion}
+                className="text-[11px] text-zinc-400 hover:text-[#FF4500] underline cursor-pointer"
+              >
+                ¿No llegó el correo? Reenviar código
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Pie de tarjeta: Cambiar entre Login / Registro / Volver */}
         <div className="pt-2 text-center border-t border-zinc-800">
-          <button
-            type="button"
-            onClick={() => {
-              setEsRegistro(!esRegistro);
-              setMensaje(null);
-            }}
-            className="text-xs text-zinc-400 hover:text-[#FF4500] font-medium cursor-pointer transition-colors"
-          >
-            {esRegistro ? '¿Ya tenés cuenta? Iniciar Sesión' : '¿Empleado de local existente? Solicitar acceso'}
-          </button>
+          {modo === 'recuperar_email' || modo === 'recuperar_codigo' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setModo('login');
+                setMensaje(null);
+              }}
+              className="text-xs text-zinc-400 hover:text-[#FF4500] font-medium cursor-pointer transition-colors inline-flex items-center gap-1.5"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Volver a Iniciar Sesión
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setModo(modo === 'registro' ? 'login' : 'registro');
+                setMensaje(null);
+              }}
+              className="text-xs text-zinc-400 hover:text-[#FF4500] font-medium cursor-pointer transition-colors"
+            >
+              {modo === 'registro' ? '¿Ya tenés cuenta? Iniciar Sesión' : '¿Empleado de local existente? Solicitar acceso'}
+            </button>
+          )}
         </div>
       </div>
     </div>
