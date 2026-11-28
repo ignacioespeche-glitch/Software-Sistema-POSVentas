@@ -12,10 +12,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
-  KeyRound
+  KeyRound,
+  ShieldCheck
 } from 'lucide-react';
 
-type ModoAuth = 'login' | 'registro' | 'recuperar_email' | 'recuperar_codigo';
+type ModoAuth = 'login' | 'registro' | 'recuperar_email' | 'recuperar_codigo' | 'recuperar_password';
 
 export const LoginView = () => {
   const navigate = useNavigate();
@@ -156,7 +157,7 @@ export const LoginView = () => {
     setLoading(false);
   };
 
-  // Paso 1 Recuperar: Enviar código al mail
+  // Paso 1: Enviar código OTP de 6 dígitos usando signInWithOtp (no requiere SMTP custom)
   const handleEnviarCodigoRecuperacion = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -168,32 +169,74 @@ export const LoginView = () => {
       return;
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        shouldCreateUser: false,
+      },
+    });
 
     if (error) {
-      setMensaje({ tipo: 'error', texto: error.message });
+      if (error.message.toLowerCase().includes('signups not allowed')) {
+        setMensaje({
+          tipo: 'error',
+          texto: 'No encontramos ninguna cuenta registrada con ese correo.'
+        });
+      } else {
+        setMensaje({ tipo: 'error', texto: error.message });
+      }
     } else {
+      setCodigoOtp('');
       setMensaje({
         tipo: 'exito',
-        texto: `Enviamos un código de verificación a ${email}. Revisá tu bandeja de entrada o spam.`
+        texto: `Te enviamos un código de 6 dígitos a ${email}. Revisá tu casilla o spam y escribilo acá abajo.`
       });
       setModo('recuperar_codigo');
     }
     setLoading(false);
   };
 
-  // Paso 2 Recuperar: Confirmar código + nueva contraseña
-  const handleConfirmarNuevaPassword = async (e: React.FormEvent) => {
+  // Paso 2: Verificar que el código de 6 dígitos coincida
+  const handleVerificarCodigo = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMensaje(null);
 
     const tokenLimpio = codigoOtp.trim();
     if (tokenLimpio.length < 6) {
-      setMensaje({ tipo: 'error', texto: 'Ingresá el código de 6 dígitos que llegó a tu mail.' });
+      setMensaje({ tipo: 'error', texto: 'Ingresá el código completo de 6 dígitos que llegó a tu mail.' });
       setLoading(false);
       return;
     }
+
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: tokenLimpio,
+      type: 'email',
+    });
+
+    if (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: 'El código es incorrecto o ya venció. Revisá el número o pedí uno nuevo.'
+      });
+      setLoading(false);
+      return;
+    }
+
+    setMensaje({
+      tipo: 'exito',
+      texto: 'Código verificado. Ahora elegí tu nueva contraseña.'
+    });
+    setModo('recuperar_password');
+    setLoading(false);
+  };
+
+  // Paso 3: Guardar nueva contraseña y volver al login
+  const handleGuardarNuevaPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMensaje(null);
 
     if (nuevaPassword.length < 8) {
       setMensaje({ tipo: 'error', texto: 'La nueva contraseña debe tener al menos 8 caracteres.' });
@@ -207,27 +250,12 @@ export const LoginView = () => {
       return;
     }
 
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email: email.trim(),
-      token: tokenLimpio,
-      type: 'recovery',
-    });
-
-    if (verifyError) {
-      setMensaje({
-        tipo: 'error',
-        texto: 'Código inválido o vencido. Verificá los dígitos o pedí uno nuevo.'
-      });
-      setLoading(false);
-      return;
-    }
-
-    const { error: updateError } = await supabase.auth.updateUser({
+    const { error } = await supabase.auth.updateUser({
       password: nuevaPassword,
     });
 
-    if (updateError) {
-      setMensaje({ tipo: 'error', texto: updateError.message });
+    if (error) {
+      setMensaje({ tipo: 'error', texto: error.message });
       setLoading(false);
       return;
     }
@@ -235,7 +263,7 @@ export const LoginView = () => {
     await supabase.auth.signOut();
     setMensaje({
       tipo: 'exito',
-      texto: '¡Contraseña actualizada correctamente! Ya podés ingresar con tu nueva clave.'
+      texto: '¡Contraseña cambiada con éxito! Ya podés iniciar sesión con tu nueva clave.'
     });
     setCodigoOtp('');
     setNuevaPassword('');
@@ -256,11 +284,15 @@ export const LoginView = () => {
     },
     recuperar_email: {
       titulo: 'Recuperar Contraseña',
-      subtitulo: 'Te enviaremos un código de confirmación a tu correo'
+      subtitulo: 'Ingresá tu mail y te enviamos un código de 6 dígitos'
     },
     recuperar_codigo: {
-      titulo: 'Crear Nueva Contraseña',
-      subtitulo: `Ingresá el código enviado a ${email}`
+      titulo: 'Verificar Código',
+      subtitulo: `Escribí el código de 6 dígitos enviado a ${email}`
+    },
+    recuperar_password: {
+      titulo: 'Nueva Contraseña',
+      subtitulo: 'Creá tu nueva clave de acceso para GEMI'
     }
   };
 
@@ -480,28 +512,54 @@ export const LoginView = () => {
           </form>
         )}
 
-        {/* PASO 2 RECUPERACIÓN: CÓDIGO OTP + NUEVA CONTRASEÑA */}
+        {/* PASO 2 RECUPERACIÓN: VERIFICAR CÓDIGO OTP */}
         {modo === 'recuperar_codigo' && (
-          <form onSubmit={handleConfirmarNuevaPassword} className="space-y-4">
+          <form onSubmit={handleVerificarCodigo} className="space-y-4">
             <div>
               <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">
-                Código de Verificación (6 dígitos)
+                Código de 6 dígitos
               </label>
               <div className="relative">
-                <KeyRound className="w-4 h-4 absolute left-3 top-2.5 text-[#FF4500]" />
+                <KeyRound className="w-4 h-4 absolute left-3 top-3 text-[#FF4500]" />
                 <input
                   type="text"
                   inputMode="numeric"
                   required
                   maxLength={8}
-                  placeholder="Ej. 123456"
+                  placeholder="000000"
                   value={codigoOtp}
-                  onChange={(e) => setCodigoOtp(e.target.value.replace(/\s+/g, ''))}
-                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs font-mono tracking-widest text-white focus:outline-none focus:border-[#FF4500]"
+                  onChange={(e) => setCodigoOtp(e.target.value.replace(/\D/g, ''))}
+                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2.5 text-center text-base font-mono font-black tracking-[0.4em] text-white focus:outline-none focus:border-[#FF4500]"
+                  autoFocus
                 />
               </div>
             </div>
 
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[#FF4500] hover:bg-[#ff571a] disabled:bg-zinc-800 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF4500]/20"
+            >
+              {loading ? 'Verificando...' : 'Verificar código'}
+              <ShieldCheck className="w-4 h-4" />
+            </button>
+
+            <div className="text-center">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleEnviarCodigoRecuperacion}
+                className="text-[11px] text-zinc-400 hover:text-[#FF4500] underline cursor-pointer"
+              >
+                ¿No llegó el mail? Reenviar código
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* PASO 3 RECUPERACIÓN: NUEVA CONTRASEÑA + REPETIR CONTRASEÑA */}
+        {modo === 'recuperar_password' && (
+          <form onSubmit={handleGuardarNuevaPassword} className="space-y-4">
             <div>
               <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">
                 Nueva Contraseña
@@ -515,20 +573,21 @@ export const LoginView = () => {
                   value={nuevaPassword}
                   onChange={(e) => setNuevaPassword(e.target.value)}
                   className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
+                  autoFocus
                 />
               </div>
             </div>
 
             <div>
               <label className="block text-xs uppercase font-bold text-zinc-400 mb-1">
-                Confirmar Nueva Contraseña
+                Repetir Contraseña
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
                 <input
                   type="password"
                   required
-                  placeholder="Repetí la nueva contraseña"
+                  placeholder="Repetí tu nueva contraseña"
                   value={confirmarPassword}
                   onChange={(e) => setConfirmarPassword(e.target.value)}
                   className="w-full bg-[#121212] border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF4500]"
@@ -541,26 +600,15 @@ export const LoginView = () => {
               disabled={loading}
               className="w-full bg-[#FF4500] hover:bg-[#ff571a] disabled:bg-zinc-800 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF4500]/20"
             >
-              {loading ? 'Verificando...' : 'Confirmar y cambiar contraseña'}
+              {loading ? 'Guardando...' : 'Cambiar contraseña'}
               <CheckCircle2 className="w-4 h-4" />
             </button>
-
-            <div className="text-center">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleEnviarCodigoRecuperacion}
-                className="text-[11px] text-zinc-400 hover:text-[#FF4500] underline cursor-pointer"
-              >
-                ¿No llegó el correo? Reenviar código
-              </button>
-            </div>
           </form>
         )}
 
         {/* Pie de tarjeta: Cambiar entre Login / Registro / Volver */}
         <div className="pt-2 text-center border-t border-zinc-800">
-          {modo === 'recuperar_email' || modo === 'recuperar_codigo' ? (
+          {modo === 'recuperar_email' || modo === 'recuperar_codigo' || modo === 'recuperar_password' ? (
             <button
               type="button"
               onClick={() => {
