@@ -3,9 +3,12 @@ export interface Empresa {
   nombre: string;
   slug?: string;
   rubro: string;
+  plan_nombre?: 'base' | 'turbo' | 'elite' | string;
   modulo_traspasos: boolean;
   modulo_senas: boolean;
   modulo_cambios: boolean;
+  modulo_tiendanube?: boolean;
+  modulo_api_web?: boolean;
   activa: boolean;
   created_at?: string;
 }
@@ -81,6 +84,8 @@ export interface Variante {
   color: string;
   talle_id: string;
   sku_interno?: string;
+  tiendanube_product_id?: number | null;
+  tiendanube_variant_id?: number | null;
   activo: boolean;
   talles_catalogo?: TalleCatalogo;
   stock_sucursal?: StockSucursal[];
@@ -109,4 +114,21 @@ export interface CajaTurno {
   diferencia?: number;
   estado: 'abierta' | 'cerrada';
   observaciones?: string;
+}
+
+export interface IntegracionEcommerce {
+  id: string;
+  empresa_id: string;
+  sucursal_stock_id?: string | null;
+  tiendanube_store_id?: string | null;
+  tiendanube_store_name?: string | null;
+  tiendanube_conectado: boolean;
+  api_key_publica: string;
+  ultima_sincronizacion?: string | null;
+  resumen_ultima_sync?: {
+    vinculados_auto?: number;
+    stock_actualizado?: number;
+    sin_coincidencia?: number;
+    detalle_sin_coincidencia?: string[];
+  } | null;
 }

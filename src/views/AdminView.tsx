@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { registrarAuditoria } from '../lib/auditoria';
-import type { Sucursal } from '../types/database';
+import type { Sucursal, IntegracionEcommerce } from '../types/database';
 import { 
   BarChart3, 
   DollarSign, 
@@ -33,7 +33,9 @@ import {
   BookmarkCheck,
   RotateCcw,
   Boxes,
-  CheckSquare
+  CheckSquare,
+  Globe,
+  RefreshCw
 } from 'lucide-react';
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -69,6 +71,11 @@ export const AdminView = () => {
   const [accesosRapidos, setAccesosRapidos] = useState<string[]>([]);
   const [guardandoAccesos, setGuardandoAccesos] = useState(false);
 
+  // Integraciones E-Commerce (Tiendanube + API Web Propia)
+  const [integracion, setIntegracion] = useState<IntegracionEcommerce | null>(null);
+  const [sincronizandoTn, setSincronizandoTn] = useState(false);
+  const [copiadoApiKey, setCopiadoApiKey] = useState(false);
+
   // Edición de WhatsApp del personal
   const [editandoWhatsappUserId, setEditandoWhatsappUserId] = useState<string | null>(null);
   const [whatsappTemp, setWhatsappTemp] = useState<string>('');
@@ -95,6 +102,29 @@ export const AdminView = () => {
     cargarDatosAdmin();
   }, [filtroSucursal, empresa?.id]);
 
+  // Detecta regreso automático desde la autorización OAuth de Tiendanube (?code=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const codeTn = params.get('code');
+    const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+
+    if (codeTn && empresaIdEfectivo) {
+      window.history.replaceState({}, '', '/admin');
+      supabase.functions
+        .invoke('tiendanube-sync', {
+          body: { action: 'oauth_callback', empresa_id: empresaIdEfectivo, code: codeTn },
+        })
+        .then(({ data, error }) => {
+          if (error || data?.error) {
+            alert('Error conectando Tiendanube: ' + (data?.error || error?.message));
+          } else {
+            alert(`¡Tienda "${data.store_name}" conectada con éxito! Elegí la sucursal de stock y tocá Sincronizar.`);
+            cargarDatosAdmin();
+          }
+        });
+    }
+  }, [empresa?.id, perfil?.empresa_id]);
+
   const cargarDatosAdmin = async () => {
     const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
 
@@ -112,6 +142,23 @@ export const AdminView = () => {
           setAccesosRapidos(empData.accesos_rapidos.slice(0, 3));
         }
       }
+
+      // Cargar o inicializar fila de integraciones_ecommerce
+      let { data: integData } = await supabase
+        .from('integraciones_ecommerce')
+        .select('*')
+        .eq('empresa_id', empresaIdEfectivo)
+        .maybeSingle();
+
+      if (!integData) {
+        const { data: nuevaInteg } = await supabase
+          .from('integraciones_ecommerce')
+          .insert({ empresa_id: empresaIdEfectivo })
+          .select()
+          .single();
+        integData = nuevaInteg;
+      }
+      if (integData) setIntegracion(integData as IntegracionEcommerce);
 
       const { data: logsData } = await supabase
         .from('auditoria_logs')
@@ -277,6 +324,44 @@ export const AdminView = () => {
     if (turnosData) setTurnosCaja(turnosData);
   };
 
+  const handleConectarTiendanube = () => {
+    const clientId = '55006';
+    window.location.href = `https://www.tiendanube.com/apps/${clientId}/authorize`;
+  };
+
+  const handleCambiarSucursalStockWeb = async (sucursalId: string) => {
+    const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+    if (!empresaIdEfectivo) return;
+
+    await supabase
+      .from('integraciones_ecommerce')
+      .update({ sucursal_stock_id: sucursalId || null })
+      .eq('empresa_id', empresaIdEfectivo);
+
+    setIntegracion((prev) => (prev ? { ...prev, sucursal_stock_id: sucursalId || null } : prev));
+  };
+
+  const handleSincronizarTodoTiendanube = async () => {
+    const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+    if (!empresaIdEfectivo) return;
+
+    setSincronizandoTn(true);
+    const { data, error } = await supabase.functions.invoke('tiendanube-sync', {
+      body: { action: 'sync_masivo', empresa_id: empresaIdEfectivo },
+    });
+    setSincronizandoTn(false);
+
+    if (error || data?.error) {
+      alert('Error al sincronizar: ' + (data?.error || error?.message));
+      return;
+    }
+
+    alert(
+      `Sincronización completa:\n• ${data.resumen.vinculados_auto} variantes vinculadas y actualizadas automáticamente.\n• ${data.resumen.sin_coincidencia} sin coincidencia de nombre.`
+    );
+    cargarDatosAdmin();
+  };
+
   const toggleAccesoRapido = async (idSeccion: string) => {
     const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
     if (!empresaIdEfectivo) return;
@@ -307,7 +392,6 @@ export const AdminView = () => {
       return;
     }
 
-    // Actualizar la barra superior en vivo sin recargar
     window.dispatchEvent(
       new CustomEvent('gemi:accesos-rapidos-actualizados', { detail: nuevaLista })
     );
@@ -730,6 +814,165 @@ export const AdminView = () => {
             );
           })}
         </div>
+      </div>
+
+      {/* Integraciones E-Commerce: Tiendanube (Turbo IA + Élite) y API Web Propia (Élite) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+          <div>
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Globe className="w-5 h-5 text-sky-400" />
+              Tienda Online & Sincronización Automática de Stock
+            </h2>
+            <p className="text-xs text-slate-400">
+              Emparejá todo tu catálogo en 1 clic sin cargar SKU a mano y descontá stock automático ante cada venta web.
+            </p>
+          </div>
+        </div>
+
+        {/* PLAN BASE: Bloqueado con invitación a subir a Turbo IA */}
+        {!empresa?.modulo_tiendanube && !empresa?.modulo_api_web ? (
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                Disponible desde Plan GEMI Turbo IA
+              </span>
+              <p className="text-sm font-bold text-white pt-1">
+                Conectá tu Tiendanube o Página Web Propia con GEMI
+              </p>
+              <p className="text-xs text-slate-400">
+                Sincronizá precios, talles y stock al instante en todos tus canales sin planillas ni carga manual de SKUs.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* BLOQUE TIENDANUBE (Plan Turbo IA + Élite) */}
+            {empresa?.modulo_tiendanube && (
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-sky-400">
+                      Plan Turbo IA & Élite
+                    </span>
+                    <h3 className="text-sm font-black text-white">Tiendanube Sync Automático</h3>
+                  </div>
+                  {integracion?.tiendanube_conectado ? (
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      ● Conectada ({integracion.tiendanube_store_name})
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-400">
+                      Sin vincular
+                    </span>
+                  )}
+                </div>
+
+                {!integracion?.tiendanube_conectado ? (
+                  <button
+                    type="button"
+                    onClick={handleConectarTiendanube}
+                    className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-black py-2.5 px-4 rounded-lg text-xs uppercase tracking-wider cursor-pointer transition-colors"
+                  >
+                    Conectar Tiendanube en 1 Clic
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                        Sucursal que abastece la Tienda Online
+                      </label>
+                      <select
+                        value={integracion?.sucursal_stock_id || ''}
+                        onChange={(e) => handleCambiarSucursalStockWeb(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-semibold"
+                      >
+                        <option value="">-- Seleccioná una sucursal --</option>
+                        {sucursales.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={sincronizandoTn}
+                      onClick={handleSincronizarTodoTiendanube}
+                      className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 text-slate-950 font-black py-2.5 px-4 rounded-lg text-xs uppercase tracking-wider cursor-pointer transition-colors flex items-center justify-center gap-2"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${sincronizandoTn ? 'animate-spin' : ''}`} />
+                      {sincronizandoTn ? 'Auto-emparejando catálogo...' : 'Auto-Vincular y Sincronizar Todo Ahora'}
+                    </button>
+
+                    {integracion?.resumen_ultima_sync && (
+                      <div className="text-[11px] text-slate-400 bg-slate-900/80 border border-slate-800 rounded-lg p-3 space-y-1">
+                        <p className="text-emerald-400 font-bold">
+                          ✓ {integracion.resumen_ultima_sync.vinculados_auto} variantes sincronizadas automáticamente
+                        </p>
+                        {(integracion.resumen_ultima_sync.sin_coincidencia || 0) > 0 && (
+                          <p className="text-amber-400">
+                            ⚠ {integracion.resumen_ultima_sync.sin_coincidencia} productos en Tiendanube con nombre distinto a GEMI
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* BLOQUE API ABIERTA PARA WEBS PROPIAS (Exclusivo Plan Élite) */}
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                    Exclusivo Plan Élite
+                  </span>
+                  <h3 className="text-sm font-black text-white">API Abierta para Webs Propias (WooCommerce / Custom)</h3>
+                </div>
+              </div>
+
+              {!empresa?.modulo_api_web ? (
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  ¿Tenés una página web propia fuera de Tiendanube? Pasate al <strong>Plan GEMI Élite</strong> para obtener tu API Key y conectar cualquier tienda online o desarrollo a medida.
+                </p>
+              ) : (
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                      Tu API Key Privada (Header: x-api-key)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={integracion?.api_key_publica || ''}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-xs text-sky-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(integracion?.api_key_publica || '');
+                          setCopiadoApiKey(true);
+                          setTimeout(() => setCopiadoApiKey(false), 2000);
+                        }}
+                        className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold cursor-pointer shrink-0"
+                      >
+                        {copiadoApiKey ? 'Copiada ✓' : 'Copiar'}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    <strong>Endpoint Stock & Ventas:</strong>{' '}
+                    <code className="text-slate-300">{`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-sync`}</code>
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Auditoría de Cajas & Turnos */}
