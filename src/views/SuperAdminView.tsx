@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ConfiguracionArcaCard } from '../components/ConfiguracionArcaCard';
 import { ImportadorCatalogoModal } from '../components/ImportadorCatalogoModal';
-import type { Sucursal, Categoria } from '../types/database';
+import type { Sucursal, Categoria, IntegracionEcommerce } from '../types/database';
 import {
   ShieldCheck,
   Search,
@@ -29,7 +29,12 @@ import {
   X,
   FileSpreadsheet,
   Tags,
-  Loader2
+  Loader2,
+  Globe,
+  RefreshCw,
+  Copy,
+  Check,
+  Link2
 } from 'lucide-react';
 
 // Lista centralizada de módulos: agregando uno acá aparece automáticamente en todos los clientes
@@ -119,6 +124,19 @@ export const SuperAdminView = () => {
   const [categoriasImportar, setCategoriasImportar] = useState<Categoria[]>([]);
   const [tallesCatalogo, setTallesCatalogo] = useState<any[]>([]);
   const [cargandoDatosImportar, setCargandoDatosImportar] = useState(false);
+
+  // Modal de E-Commerce (Tiendanube + API Web Propia) por empresa
+  const [empresaEcommerceSeleccionada, setEmpresaEcommerceSeleccionada] = useState<EmpresaMetricas | null>(null);
+  const [sucursalesEcommerce, setSucursalesEcommerce] = useState<Sucursal[]>([]);
+  const [integracionEcommerce, setIntegracionEcommerce] = useState<IntegracionEcommerce | null>(null);
+  const [modulosEcommerce, setModulosEcommerce] = useState<{ modulo_tiendanube: boolean; modulo_api_web: boolean }>({
+    modulo_tiendanube: false,
+    modulo_api_web: false
+  });
+  const [cargandoEcommerce, setCargandoEcommerce] = useState(false);
+  const [sincronizandoEcommerce, setSincronizandoEcommerce] = useState(false);
+  const [copiadoLinkTn, setCopiadoLinkTn] = useState(false);
+  const [copiadoApiKey, setCopiadoApiKey] = useState(false);
 
   // Anuncio global
   const [mensajeAnuncio, setMensajeAnuncio] = useState('');
@@ -255,6 +273,78 @@ export const SuperAdminView = () => {
     setCategoriasImportar((resCats.data as Categoria[]) || []);
     setTallesCatalogo(resTalles.data || []);
     setCargandoDatosImportar(false);
+  };
+
+  // Abrir Configuración E-Commerce (Tiendanube + API Web Propia) por Empresa
+  const abrirEcommerceCliente = async (emp: EmpresaMetricas) => {
+    setEmpresaEcommerceSeleccionada(emp);
+    setCargandoEcommerce(true);
+    setCopiadoLinkTn(false);
+    setCopiadoApiKey(false);
+
+    const [resSucs, resEmp, resInteg] = await Promise.all([
+      supabase.from('sucursales').select('*').eq('empresa_id', emp.empresa_id).order('nombre'),
+      supabase.from('empresas').select('modulo_tiendanube, modulo_api_web').eq('id', emp.empresa_id).single(),
+      supabase.from('integraciones_ecommerce').select('*').eq('empresa_id', emp.empresa_id).maybeSingle()
+    ]);
+
+    setSucursalesEcommerce((resSucs.data as Sucursal[]) || []);
+    setModulosEcommerce({
+      modulo_tiendanube: Boolean(resEmp.data?.modulo_tiendanube),
+      modulo_api_web: Boolean(resEmp.data?.modulo_api_web)
+    });
+
+    let integ = resInteg.data;
+    if (!integ) {
+      const { data: creada } = await supabase
+        .from('integraciones_ecommerce')
+        .insert({ empresa_id: emp.empresa_id })
+        .select()
+        .single();
+      integ = creada;
+    }
+    setIntegracionEcommerce((integ as IntegracionEcommerce) || null);
+    setCargandoEcommerce(false);
+  };
+
+  const handleToggleModuloEcommerce = async (
+    campo: 'modulo_tiendanube' | 'modulo_api_web',
+    valor: boolean
+  ) => {
+    if (!empresaEcommerceSeleccionada) return;
+    await supabase
+      .from('empresas')
+      .update({ [campo]: valor })
+      .eq('id', empresaEcommerceSeleccionada.empresa_id);
+    setModulosEcommerce((prev) => ({ ...prev, [campo]: valor }));
+  };
+
+  const handleCambiarSucursalStockEcommerce = async (sucId: string) => {
+    if (!empresaEcommerceSeleccionada) return;
+    await supabase
+      .from('integraciones_ecommerce')
+      .update({ sucursal_stock_id: sucId || null })
+      .eq('empresa_id', empresaEcommerceSeleccionada.empresa_id);
+    setIntegracionEcommerce((prev) => (prev ? { ...prev, sucursal_stock_id: sucId || null } : prev));
+  };
+
+  const handleSincronizarTodoTiendanube = async () => {
+    if (!empresaEcommerceSeleccionada) return;
+    setSincronizandoEcommerce(true);
+    const { data, error } = await supabase.functions.invoke('tiendanube-sync', {
+      body: { action: 'sync_masivo', empresa_id: empresaEcommerceSeleccionada.empresa_id }
+    });
+    setSincronizandoEcommerce(false);
+
+    if (error || data?.error) {
+      alert('Error al sincronizar: ' + (data?.error || error?.message));
+      return;
+    }
+
+    alert(
+      `Sincronización completa:\n• ${data.resumen.vinculados_auto} variantes vinculadas y actualizadas.\n• ${data.resumen.sin_coincidencia} sin coincidencia.`
+    );
+    abrirEcommerceCliente(empresaEcommerceSeleccionada);
   };
 
   const calcularDiasRestantes = (fechaVenc: string | null) => {
@@ -527,6 +617,10 @@ export const SuperAdminView = () => {
     );
   }
 
+  const linkInvitacionTiendanube = empresaEcommerceSeleccionada
+    ? `${window.location.origin}/conectar-tiendanube?empresa_id=${empresaEcommerceSeleccionada.empresa_id}`
+    : '';
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-6 max-w-7xl mx-auto space-y-6 pb-20">
       {/* Encabezado */}
@@ -539,7 +633,7 @@ export const SuperAdminView = () => {
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Gestión de clientes SaaS, importación masiva, categorías, configuración fiscal ARCA y seguimiento 1 a 1.
+            Gestión de clientes SaaS, importación masiva, e-commerce, configuración fiscal ARCA y seguimiento 1 a 1.
           </p>
         </div>
 
@@ -812,6 +906,16 @@ export const SuperAdminView = () => {
                       <Tags className="w-3.5 h-3.5" /> Categorías
                     </button>
 
+                    {/* Botón E-Commerce Tiendanube + API Web (Exclusivo Super Admin) */}
+                    <button
+                      type="button"
+                      onClick={() => abrirEcommerceCliente(emp)}
+                      title={`Conectar Tiendanube o API Web Propia de ${emp.nombre}`}
+                      className="bg-indigo-500/10 hover:bg-indigo-500 border border-indigo-500/30 text-indigo-400 hover:text-white font-bold px-3 py-2 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <Globe className="w-3.5 h-3.5" /> E-Commerce
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => abrirConfiguracionArcaCliente(emp)}
@@ -1000,6 +1104,181 @@ export const SuperAdminView = () => {
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL E-COMMERCE: TIENDANUBE & API WEB PROPIA (EXCLUSIVO SUPER ADMIN) */}
+      {empresaEcommerceSeleccionada && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-6 space-y-5 my-auto shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-400">
+                  Integración Omnicanal · Solo SuperAdmin
+                </span>
+                <h3 className="font-black text-lg text-white flex items-center gap-2 mt-0.5">
+                  <Globe className="w-5 h-5 text-sky-400" />
+                  E-Commerce · {empresaEcommerceSeleccionada.nombre}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmpresaEcommerceSeleccionada(null)}
+                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {cargandoEcommerce ? (
+              <div className="py-12 text-center text-xs text-slate-400">
+                Cargando configuración de tienda online...
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {/* Switches de permisos por plan */}
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 px-3.5 py-2.5 rounded-xl cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={modulosEcommerce.modulo_tiendanube}
+                      onChange={(e) => handleToggleModuloEcommerce('modulo_tiendanube', e.target.checked)}
+                    />
+                    <span className="font-bold text-slate-200">Habilitar Tiendanube (Turbo IA / Élite)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 px-3.5 py-2.5 rounded-xl cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={modulosEcommerce.modulo_api_web}
+                      onChange={(e) => handleToggleModuloEcommerce('modulo_api_web', e.target.checked)}
+                    />
+                    <span className="font-bold text-slate-200">Habilitar API Web Propia (Élite)</span>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Bloque 1: Tiendanube */}
+                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-sm font-black text-white">1. Tiendanube OAuth & Sync</h4>
+                      {integracionEcommerce?.tiendanube_conectado ? (
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          ● {integracionEcommerce.tiendanube_store_name}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                          Sin vincular
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-bold uppercase text-slate-400">
+                        Link para mandar al dueño por WhatsApp
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={linkInvitacionTiendanube}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 font-mono text-[11px] text-slate-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(linkInvitacionTiendanube);
+                            setCopiadoLinkTn(true);
+                            setTimeout(() => setCopiadoLinkTn(false), 2500);
+                          }}
+                          className="px-3 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl text-xs font-black cursor-pointer inline-flex items-center gap-1 shrink-0"
+                        >
+                          {copiadoLinkTn ? <Check className="w-3.5 h-3.5" /> : <Link2 className="w-3.5 h-3.5" />}
+                          {copiadoLinkTn ? 'Copiado' : 'Copiar'}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        El dueño entra a ese link, toca Autorizar con su cuenta y queda vinculado sin pasarte claves.
+                      </p>
+                    </div>
+
+                    {integracionEcommerce?.tiendanube_conectado && (
+                      <div className="space-y-3 pt-3 border-t border-slate-800">
+                        <div>
+                          <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                            Sucursal que abastece la Tienda Online
+                          </label>
+                          <select
+                            value={integracionEcommerce.sucursal_stock_id || ''}
+                            onChange={(e) => handleCambiarSucursalStockEcommerce(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-semibold"
+                          >
+                            <option value="">-- Seleccionar sucursal --</option>
+                            {sucursalesEcommerce.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={sincronizandoEcommerce}
+                          onClick={handleSincronizarTodoTiendanube}
+                          className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 text-slate-950 font-black py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${sincronizandoEcommerce ? 'animate-spin' : ''}`} />
+                          {sincronizandoEcommerce ? 'Sincronizando...' : 'Auto-Vincular y Sincronizar Todo'}
+                        </button>
+
+                        {integracionEcommerce.resumen_ultima_sync && (
+                          <p className="text-[11px] text-emerald-400 font-semibold">
+                            ✓ {integracionEcommerce.resumen_ultima_sync.vinculados_auto} variantes vinculadas ·{' '}
+                            {integracionEcommerce.resumen_ultima_sync.sin_coincidencia || 0} sin coincidencia
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bloque 2: API Key Web Propia */}
+                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4">
+                    <h4 className="text-sm font-black text-white">2. API Web Propia (Plan Élite)</h4>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Clave privada para conectar páginas web propias fuera de Tiendanube (header <code className="text-sky-400">x-api-key</code>).
+                    </p>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={integracionEcommerce?.api_key_publica || ''}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 font-mono text-xs text-sky-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(integracionEcommerce?.api_key_publica || '');
+                          setCopiadoApiKey(true);
+                          setTimeout(() => setCopiadoApiKey(false), 2000);
+                        }}
+                        className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1 shrink-0"
+                      >
+                        {copiadoApiKey ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiadoApiKey ? 'Copiada' : 'Copiar'}
+                      </button>
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 bg-slate-900/70 border border-slate-800 rounded-xl p-3 break-all">
+                      <span className="block font-bold text-slate-300 mb-1">Endpoint Stock & Ventas:</span>
+                      <code>{`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tiendanube-sync`}</code>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

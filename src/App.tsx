@@ -21,6 +21,7 @@ import { SuperAdminView } from './views/SuperAdminView';
 import { LandingView } from './views/LandingView';
 import { LegalesView } from './views/LegalesView';
 import { TravisStudioView } from './views/TravisStudioView';
+import { ConectarTiendanubeView } from './views/ConectarTiendanubeView';
 
 const RutaProtegida = ({ children, soloAdmin = false }: { children: React.ReactNode; soloAdmin?: boolean }) => {
   const { perfil, loading } = useAuth();
@@ -91,6 +92,7 @@ const ContenedorPrincipal = () => {
     location.pathname === '/terminos' ||
     location.pathname === '/privacidad' ||
     location.pathname === '/superadmin' ||
+    location.pathname === '/conectar-tiendanube' ||
     location.pathname.startsWith('/ticket/') ||
     (location.pathname === '/' && (!perfil || !perfil.activo));
 
@@ -120,6 +122,7 @@ const ContenedorPrincipal = () => {
           <Route path="/terminos" element={<LegalesView tipo="terminos" />} />
           <Route path="/privacidad" element={<LegalesView tipo="privacidad" />} />
           <Route path="/ticket/:id" element={<TicketPublicoView />} />
+          <Route path="/conectar-tiendanube" element={<ConectarTiendanubeView />} />
 
           <Route
             path="/superadmin"
