@@ -27,7 +27,13 @@ import {
   Ban,
   KeyRound,
   History,
-  Phone
+  Phone,
+  Pin,
+  ShoppingCart,
+  BookmarkCheck,
+  RotateCcw,
+  Boxes,
+  CheckSquare
 } from 'lucide-react';
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -58,6 +64,10 @@ export const AdminView = () => {
   const [todosLosTraspasos, setTodosLosTraspasos] = useState<any[]>([]);
   const [turnosCaja, setTurnosCaja] = useState<any[]>([]);
   const [logsAuditoria, setLogsAuditoria] = useState<any[]>([]);
+
+  // Accesos rápidos configurables de la barra superior (máximo 3)
+  const [accesosRapidos, setAccesosRapidos] = useState<string[]>([]);
+  const [guardandoAccesos, setGuardandoAccesos] = useState(false);
 
   // Edición de WhatsApp del personal
   const [editandoWhatsappUserId, setEditandoWhatsappUserId] = useState<string | null>(null);
@@ -91,13 +101,16 @@ export const AdminView = () => {
     if (empresaIdEfectivo) {
       const { data: empData } = await supabase
         .from('empresas')
-        .select('max_descuento_vendedor_pct, pin_autorizacion_admin')
+        .select('max_descuento_vendedor_pct, pin_autorizacion_admin, accesos_rapidos')
         .eq('id', empresaIdEfectivo)
         .single();
 
       if (empData) {
         setMaxDescuentoPct(Number(empData.max_descuento_vendedor_pct ?? 10));
         setPinAdmin(empData.pin_autorizacion_admin || '1234');
+        if (Array.isArray(empData.accesos_rapidos)) {
+          setAccesosRapidos(empData.accesos_rapidos.slice(0, 3));
+        }
       }
 
       const { data: logsData } = await supabase
@@ -262,6 +275,42 @@ export const AdminView = () => {
 
     const { data: turnosData } = await queryTurnos;
     if (turnosData) setTurnosCaja(turnosData);
+  };
+
+  const toggleAccesoRapido = async (idSeccion: string) => {
+    const empresaIdEfectivo = empresa?.id || perfil?.empresa_id;
+    if (!empresaIdEfectivo) return;
+
+    let nuevaLista: string[];
+    if (accesosRapidos.includes(idSeccion)) {
+      nuevaLista = accesosRapidos.filter((item) => item !== idSeccion);
+    } else {
+      if (accesosRapidos.length >= 3) {
+        alert('Podés fijar hasta 3 accesos directos en la barra superior (además de GEMI AI y Panel Admin). Desmarcá uno para elegir otro.');
+        return;
+      }
+      nuevaLista = [...accesosRapidos, idSeccion];
+    }
+
+    setAccesosRapidos(nuevaLista);
+    setGuardandoAccesos(true);
+
+    const { error } = await supabase
+      .from('empresas')
+      .update({ accesos_rapidos: nuevaLista })
+      .eq('id', empresaIdEfectivo);
+
+    setGuardandoAccesos(false);
+
+    if (error) {
+      alert('Error guardando accesos rápidos: ' + error.message);
+      return;
+    }
+
+    // Actualizar la barra superior en vivo sin recargar
+    window.dispatchEvent(
+      new CustomEvent('gemi:accesos-rapidos-actualizados', { detail: nuevaLista })
+    );
   };
 
   const handleGuardarSeguridad = async (e: React.FormEvent) => {
@@ -440,6 +489,17 @@ export const AdminView = () => {
     }
   };
 
+  const opcionesAccesosRapidos = [
+    { id: 'ventas', label: 'Tus Ventas', icon: ShoppingCart, visible: true },
+    { id: 'caja', label: 'Tu Caja', icon: DollarSign, visible: true },
+    { id: 'reservas', label: 'Reservas', icon: BookmarkCheck, visible: empresa?.modulo_senas !== false },
+    { id: 'cambios', label: 'Cambios', icon: RotateCcw, visible: empresa?.modulo_cambios !== false },
+    { id: 'catalogo', label: 'Tus Prendas', icon: Boxes, visible: true },
+    { id: 'traspasos', label: 'Mover Stock', icon: ArrowLeftRight, visible: Boolean(empresa?.modulo_traspasos) },
+    { id: 'tareas', label: 'Tareas', icon: CheckSquare, visible: Boolean((empresa as any)?.modulo_tareas) },
+    { id: 'calendario', label: 'Agenda', icon: Calendar, visible: (empresa as any)?.modulo_calendario !== false }
+  ].filter((op) => op.visible);
+
   const ventasValidas = ventas.filter((v) => v.estado === 'completada');
   const totalFacturado = ventasValidas.reduce((acc, v) => acc + Number(v.total_final), 0);
   const totalTickets = ventasValidas.length;
@@ -613,6 +673,62 @@ export const AdminView = () => {
           <p className="text-xs font-bold text-sky-400">
             MP / Tarjetas: ${(totalFacturado - Number(pagosPorMetodo['efectivo'] || 0)).toLocaleString()}
           </p>
+        </div>
+      </div>
+
+      {/* Accesos Directos de la Barra Superior (Máximo 3 elegibles + 2 fijos) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Pin className="w-5 h-5 text-sky-400" />
+              Accesos Directos de la Barra Superior
+            </h2>
+            <p className="text-xs text-slate-400">
+              Elegí hasta <strong>3 secciones</strong> para tenerlas siempre a mano arriba (además de <strong>GEMI AI</strong> y <strong>Panel Admin</strong> que quedan fijos).
+            </p>
+          </div>
+
+          <span className="text-xs font-black px-3 py-1 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400 self-start sm:self-auto">
+            {guardandoAccesos ? 'Guardando...' : `${accesosRapidos.length} / 3 fijados`}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+          {opcionesAccesosRapidos.map((op) => {
+            const Icono = op.icon;
+            const seleccionado = accesosRapidos.includes(op.id);
+            const bloqueadoPorLimite = !seleccionado && accesosRapidos.length >= 3;
+
+            return (
+              <button
+                key={op.id}
+                type="button"
+                onClick={() => toggleAccesoRapido(op.id)}
+                className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                  seleccionado
+                    ? 'bg-sky-500/15 border-sky-400 text-white shadow-sm'
+                    : bloqueadoPorLimite
+                    ? 'bg-slate-950/60 border-slate-800/70 text-slate-500 opacity-60 hover:opacity-80'
+                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <Icono className={`w-4 h-4 ${seleccionado ? 'text-sky-400' : 'text-slate-400'}`} />
+                  <span
+                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black ${
+                      seleccionado
+                        ? 'bg-sky-400 text-slate-950'
+                        : 'border border-slate-700 text-transparent'
+                    }`}
+                  >
+                    ✓
+                  </span>
+                </div>
+                <span className="text-xs font-bold leading-tight">{op.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

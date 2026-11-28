@@ -27,6 +27,7 @@ export const Navbar = () => {
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [online, setOnline] = useState(navigator.onLine);
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [accesosRapidosIds, setAccesosRapidosIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (empresa?.id) {
@@ -38,24 +39,66 @@ export const Navbar = () => {
         .then(({ data }) => {
           if (data) setSucursales(data as Sucursal[]);
         });
+
+      // Cargar accesos rápidos configurados por el dueño
+      const iniciales = (empresa as any)?.accesos_rapidos;
+      if (Array.isArray(iniciales)) {
+        setAccesosRapidosIds(iniciales.slice(0, 3));
+      } else {
+        supabase
+          .from('empresas')
+          .select('accesos_rapidos')
+          .eq('id', empresa.id)
+          .single()
+          .then(({ data }) => {
+            if (Array.isArray(data?.accesos_rapidos)) {
+              setAccesosRapidosIds(data.accesos_rapidos.slice(0, 3));
+            }
+          });
+      }
     }
+
+    const handleActualizacionAccesos = (e: any) => {
+      if (Array.isArray(e?.detail)) {
+        setAccesosRapidosIds(e.detail.slice(0, 3));
+      }
+    };
 
     const handleOnline = () => setOnline(true);
     const handleOffline = () => setOnline(false);
 
+    window.addEventListener('gemi:accesos-rapidos-actualizados', handleActualizacionAccesos);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
     return () => {
+      window.removeEventListener('gemi:accesos-rapidos-actualizados', handleActualizacionAccesos);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [empresa?.id]);
+  }, [empresa?.id, (empresa as any)?.accesos_rapidos]);
 
   const esAdmin = perfil?.rol === 'admin';
   const cerrarMenu = () => setMenuAbierto(false);
   const nombreMarca = empresa?.nombre?.toUpperCase() || 'GEMI POS';
   const nombreLocalActual = sucursalActiva?.nombre || 'Local';
+
+  // Catálogo de secciones disponibles para los 3 accesos rápidos (filtrando módulos activos)
+  const seccionesDisponibles = [
+    { id: 'ventas', to: '/', label: 'Tus Ventas', icon: ShoppingCart, visible: true },
+    { id: 'caja', to: '/caja', label: 'Tu Caja', icon: DollarSign, visible: true },
+    { id: 'reservas', to: '/reservas', label: 'Reservas', icon: BookmarkCheck, visible: empresa?.modulo_senas !== false },
+    { id: 'cambios', to: '/cambios', label: 'Cambios', icon: RotateCcw, visible: empresa?.modulo_cambios !== false },
+    { id: 'catalogo', to: '/catalogo', label: 'Tus Prendas', icon: Boxes, visible: true },
+    { id: 'traspasos', to: '/traspasos', label: 'Mover Stock', icon: ArrowLeftRight, visible: Boolean(empresa?.modulo_traspasos) },
+    { id: 'tareas', to: '/tareas', label: 'Tareas', icon: CheckSquare, visible: Boolean((empresa as any)?.modulo_tareas) },
+    { id: 'calendario', to: '/calendario', label: `Agenda`, icon: Calendar, visible: (empresa as any)?.modulo_calendario !== false }
+  ].filter((s) => s.visible);
+
+  const accesosRapidosActivos = accesosRapidosIds
+    .map((id) => seccionesDisponibles.find((s) => s.id === id))
+    .filter(Boolean)
+    .slice(0, 3) as typeof seccionesDisponibles;
 
   return (
     <>
@@ -113,41 +156,63 @@ export const Navbar = () => {
           </div>
         </div>
 
-        {/* Derecha: Accesos directos Dueños (GEMI AI + Panel Admin) + Estado + Perfil */}
+        {/* Derecha: Hasta 3 Accesos Rápidos elegidos + Fijos (GEMI AI + Panel Admin) + Estado + Perfil */}
         <div className="flex items-center gap-2 md:gap-3">
-          {esAdmin && (
-            <div className="hidden md:flex items-center gap-1.5 mr-1">
-              {(empresa as any)?.modulo_campaign_studio !== false && (
+          <div className="hidden lg:flex items-center gap-1.5 mr-1">
+            {accesosRapidosActivos.map((item) => {
+              const Icono = item.icon;
+              return (
                 <NavLink
-                  to="/gemi-ai"
+                  key={item.id}
+                  to={item.to}
                   className={({ isActive }) =>
                     `flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors ${
                       isActive
                         ? 'bg-sky-500 text-slate-950 shadow-sm'
-                        : 'bg-slate-900 border border-slate-800 text-slate-200 hover:text-sky-300 hover:border-sky-500/40'
+                        : 'bg-slate-900 border border-slate-800 text-slate-200 hover:text-white hover:border-slate-700'
                     }`
                   }
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span>GEMI AI</span>
+                  <Icono className="w-3.5 h-3.5 shrink-0" />
+                  <span>{item.label}</span>
                 </NavLink>
-              )}
+              );
+            })}
 
-              <NavLink
-                to="/admin"
-                className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors ${
-                    isActive
-                      ? 'bg-sky-500 text-slate-950 shadow-sm'
-                      : 'bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
-                  }`
-                }
-              >
-                <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-                <span>Panel Admin</span>
-              </NavLink>
-            </div>
-          )}
+            {esAdmin && (
+              <>
+                {(empresa as any)?.modulo_campaign_studio !== false && (
+                  <NavLink
+                    to="/gemi-ai"
+                    className={({ isActive }) =>
+                      `flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors ${
+                        isActive
+                          ? 'bg-sky-500 text-slate-950 shadow-sm'
+                          : 'bg-slate-900 border border-slate-800 text-slate-200 hover:text-sky-300 hover:border-sky-500/40'
+                      }`
+                    }
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span>GEMI AI</span>
+                  </NavLink>
+                )}
+
+                <NavLink
+                  to="/admin"
+                  className={({ isActive }) =>
+                    `flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors ${
+                      isActive
+                        ? 'bg-sky-500 text-slate-950 shadow-sm'
+                        : 'bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
+                    }`
+                  }
+                >
+                  <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                  <span>Panel Admin</span>
+                </NavLink>
+              </>
+            )}
+          </div>
 
           <div
             className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
@@ -187,7 +252,7 @@ export const Navbar = () => {
         </div>
       </header>
 
-      {/* Menú lateral desplegable */}
+      {/* Menú lateral desplegable (Mantiene siempre todas las secciones) */}
       {menuAbierto && (
         <div className="fixed inset-0 z-50 flex">
           <div
